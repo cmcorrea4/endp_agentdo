@@ -2,11 +2,10 @@ import streamlit as st
 import requests
 import json
 import time
-import os
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Agente de IA",
+    page_title="Agente DigitalOcean",
     page_icon="🤖",
     layout="wide"
 )
@@ -47,58 +46,49 @@ st.markdown("""
 def initialize_session_vars():
     if "is_configured" not in st.session_state:
         st.session_state.is_configured = False
-    if "agent_endpoint" not in st.session_state:
-        st.session_state.agent_endpoint = ""
-    if "agent_access_key" not in st.session_state:
-        st.session_state.agent_access_key = ""
+    if "agent_id" not in st.session_state:
+        st.session_state.agent_id = ""
+    if "access_token" not in st.session_state:
+        st.session_state.access_token = ""
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "include_retrieval" not in st.session_state:
-        st.session_state.include_retrieval = False
 
 # Inicializar variables
 initialize_session_vars()
 
 # Título y descripción de la aplicación
-st.markdown("<h1 class='main-header'>Agente de Inteligencia Artificial</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
 
 # Pantalla de configuración inicial si aún no se ha configurado
 if not st.session_state.is_configured:
     st.markdown("<h2 class='subheader'>Configuración Inicial</h2>", unsafe_allow_html=True)
     
-    st.info("Por favor, configura los parámetros de conexión para el agente de IA.")
+    st.info("Por favor, configura los parámetros para conectar con tu agente de DigitalOcean.")
     
     # Campos para la configuración
-    agent_endpoint = st.text_input(
-        "URL del Endpoint del Agente", 
-        placeholder="https://tu-agente.dominio.com",
-        help="URL base del endpoint de tu agente de IA (sin '/api/v1/')"
+    agent_id = st.text_input(
+        "ID del Agente", 
+        placeholder="Ejemplo: 12345",
+        help="ID numérico del agente de DigitalOcean"
     )
     
-    agent_access_key = st.text_input(
-        "Clave de Acceso", 
+    access_token = st.text_input(
+        "Token de Acceso", 
         type="password",
-        placeholder="Ingresa tu clave de acceso al agente",
-        help="Tu clave de acceso para autenticar las solicitudes"
-    )
-    
-    include_retrieval = st.checkbox(
-        "Incluir información de recuperación",
-        value=False,
-        help="Activa esta opción para incluir información de recuperación (retrieval) en la respuesta"
+        placeholder="Ingresa tu token de acceso a DigitalOcean",
+        help="Tu token de acceso para autenticar las solicitudes a la API de DigitalOcean"
     )
     
     col1, col2 = st.columns([1, 3])
     
     with col1:
         if st.button("Guardar configuración"):
-            if not agent_endpoint or not agent_access_key:
-                st.error("Por favor, ingresa tanto el endpoint como la clave de acceso")
+            if not agent_id or not access_token:
+                st.error("Por favor, ingresa tanto el ID del agente como el token de acceso")
             else:
                 # Guardar configuración en session_state
-                st.session_state.agent_endpoint = agent_endpoint
-                st.session_state.agent_access_key = agent_access_key
-                st.session_state.include_retrieval = include_retrieval
+                st.session_state.agent_id = agent_id
+                st.session_state.access_token = access_token
                 st.session_state.is_configured = True
                 st.success("¡Configuración guardada correctamente!")
                 time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
@@ -108,7 +98,7 @@ if not st.session_state.is_configured:
     st.stop()
 
 # Una vez configurado, mostrar la interfaz normal
-st.markdown("<p class='subheader'>Interactúa con el agente de IA para obtener respuestas inteligentes.</p>", unsafe_allow_html=True)
+st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
 
 # Sidebar para configuración
 st.sidebar.title("Configuración")
@@ -116,99 +106,86 @@ st.sidebar.title("Configuración")
 # Mostrar información de conexión actual
 st.sidebar.success("✅ Configuración cargada")
 with st.sidebar.expander("Ver configuración actual"):
-    st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
-    st.code(f"Incluir retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
+    st.code(f"ID del Agente: {st.session_state.agent_id}\nToken de Acceso: {'*'*10}")
     if st.button("Editar configuración"):
         st.session_state.is_configured = False
         st.rerun()
 
 # Ajustes avanzados
 with st.sidebar.expander("Ajustes avanzados"):
-    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
-                           help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
-    
-    max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
-                          help="Número máximo de tokens en la respuesta.")
-    
-    include_retrieval = st.checkbox(
-        "Incluir información de recuperación",
-        value=st.session_state.include_retrieval,
-        help="Activa esta opción para incluir información de recuperación (retrieval) en la respuesta"
+    action_type = st.selectbox(
+        "Tipo de acción",
+        options=["Consulta general", "Iniciar", "Detener", "Reiniciar", "Personalizada"],
+        index=0
     )
-    # Actualizar la configuración de retrieval si cambia
-    if include_retrieval != st.session_state.include_retrieval:
-        st.session_state.include_retrieval = include_retrieval
+    
+    # Si se selecciona acción personalizada, mostrar campo para ingresar la acción
+    custom_action = ""
+    if action_type == "Personalizada":
+        custom_action = st.text_input("Acción personalizada", placeholder="Ejemplo: update")
 
-# Función para enviar solicitud al agente de IA
-def query_agent(prompt, history=None):
+# Función para enviar acción al agente
+def send_agent_action(prompt, action=None):
     try:
-        # Obtener configuración del agente
-        agent_endpoint = st.session_state.agent_endpoint
-        agent_access_key = st.session_state.agent_access_key
-        include_retrieval = st.session_state.include_retrieval
+        # Obtener datos de configuración
+        agent_id = st.session_state.agent_id
+        access_token = st.session_state.access_token
         
-        if not agent_endpoint or not agent_access_key:
-            return {"error": "Las credenciales de API no están configuradas correctamente."}
+        if not agent_id or not access_token:
+            return {"error": "Falta configuración del agente o token de acceso."}
         
-        # Asegurarse de que el endpoint termine con /api/v1/
-        api_endpoint = agent_endpoint
-        if not api_endpoint.endswith("/"):
-            api_endpoint += "/"
-        if not api_endpoint.endswith("api/v1/"):
-            api_endpoint += "api/v1/"
+        # Construir URL según el tipo de acción
+        base_url = f"https://api.digitalocean.com/v2/agents/{agent_id}"
         
-        # Preparar URL completa para chat completions
-        completions_url = f"{api_endpoint}chat/completions"
+        if action == "Iniciar":
+            endpoint_url = f"{base_url}/actions/start"
+        elif action == "Detener":
+            endpoint_url = f"{base_url}/actions/stop"
+        elif action == "Reiniciar":
+            endpoint_url = f"{base_url}/actions/restart"
+        elif action == "Personalizada" and custom_action:
+            endpoint_url = f"{base_url}/actions/{custom_action}"
+        else:
+            # Acción por defecto - general
+            endpoint_url = f"{base_url}/actions"
         
-        # Preparar los headers
+        # Preparar headers con autenticación
         headers = {
-            "Authorization": f"Bearer {agent_access_key}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
         
-        # Preparar los mensajes en formato OpenAI
-        messages = []
-        if history:
-            messages.extend([{"role": msg["role"], "content": msg["content"]} for msg in history])
-        messages.append({"role": "user", "content": prompt})
-        
-        # Preparar el payload
+        # Preparar payload con el prompt del usuario
         payload = {
-            "model": "n/a",  # El modelo no es relevante para el agente
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens
+            "query": prompt,
+            "parameters": {
+                "max_tokens": 1000,
+                "temperature": 0.7
+            }
         }
-        
-        # Añadir extra_body si se requiere información de recuperación
-        if include_retrieval:
-            payload["extra_body"] = {"include_retrieval_info": True}
         
         # Enviar solicitud POST
         try:
-            response = requests.post(completions_url, headers=headers, json=payload, timeout=60)
+            response = requests.post(endpoint_url, headers=headers, json=payload, timeout=60)
             
             # Verificar respuesta
-            if response.status_code == 200:
+            if response.status_code == 200 or response.status_code == 201 or response.status_code == 202:
                 try:
                     response_data = response.json()
                     
-                    # Procesar la respuesta en formato OpenAI
-                    if "choices" in response_data and len(response_data["choices"]) > 0:
-                        choice = response_data["choices"][0]
-                        if "message" in choice and "content" in choice["message"]:
-                            result = {
-                                "response": choice["message"]["content"]
-                            }
-                            
-                            # Añadir información de recuperación si está disponible
-                            if include_retrieval and "retrieval" in response_data:
-                                result["retrieval"] = response_data["retrieval"]
-                            
-                            return result
+                    # Buscar la respuesta en diferentes campos posibles
+                    for field in ["result", "data", "action", "message", "output", "response"]:
+                        if field in response_data:
+                            if isinstance(response_data[field], str):
+                                return {"response": response_data[field]}
+                            elif isinstance(response_data[field], dict):
+                                for subfield in ["result", "message", "content", "output", "text"]:
+                                    if subfield in response_data[field] and isinstance(response_data[field][subfield], str):
+                                        return {"response": response_data[field][subfield]}
                     
-                    # Si no se encuentra la estructura esperada
-                    return {"error": "Formato de respuesta inesperado", "details": str(response_data)}
+                    # Si no encontramos un campo específico, devolvemos toda la respuesta
+                    return {"response": json.dumps(response_data, indent=2)}
+                    
                 except ValueError:
                     # Si no es JSON, devolver el texto plano
                     return {"response": response.text}
@@ -217,7 +194,7 @@ def query_agent(prompt, history=None):
                 error_message = f"Error en la solicitud. Código: {response.status_code}"
                 try:
                     error_details = response.json()
-                    return {"error": error_message, "details": str(error_details)}
+                    return {"error": error_message, "details": json.dumps(error_details, indent=2)}
                 except:
                     return {"error": error_message, "details": response.text}
                 
@@ -229,72 +206,44 @@ def query_agent(prompt, history=None):
 
 # Sección para probar conexión con el agente
 with st.sidebar.expander("Probar conexión"):
-    if st.button("Verificar endpoint"):
+    if st.button("Verificar agente"):
         with st.spinner("Verificando conexión..."):
             try:
-                agent_endpoint = st.session_state.agent_endpoint
-                agent_access_key = st.session_state.agent_access_key
+                agent_id = st.session_state.agent_id
+                access_token = st.session_state.access_token
                 
-                if not agent_endpoint or not agent_access_key:
-                    st.error("Falta configuración del endpoint o clave de acceso")
+                if not agent_id or not access_token:
+                    st.error("Falta configuración del agente o token de acceso")
                 else:
-                    # Asegurarse de que el endpoint termine con /api/v1/
-                    api_endpoint = agent_endpoint
-                    if not api_endpoint.endswith("/"):
-                        api_endpoint += "/"
-                    if not api_endpoint.endswith("api/v1/"):
-                        api_endpoint += "api/v1/"
-                    
-                    # Preparar URL para modelos (endpoint común para verificar)
-                    models_url = f"{api_endpoint}models"
+                    # Construir URL para verificar el estado del agente
+                    check_url = f"https://api.digitalocean.com/v2/agents/{agent_id}"
                     
                     # Preparar headers
                     headers = {
-                        "Authorization": f"Bearer {agent_access_key}",
+                        "Authorization": f"Bearer {access_token}",
                         "Content-Type": "application/json"
                     }
                     
-                    # Intentar hacer una solicitud simple para verificar conexión
+                    # Intentar obtener información del agente
                     try:
-                        response = requests.get(models_url, headers=headers, timeout=10)
+                        response = requests.get(check_url, headers=headers, timeout=10)
                         
-                        if response.status_code < 400:
+                        if response.status_code == 200:
                             st.success(f"✅ Conexión exitosa con el agente")
-                            try:
-                                response_data = response.json()
-                                if "data" in response_data:
-                                    st.write("Modelos disponibles:")
-                                    for model in response_data["data"]:
-                                        st.write(f"- {model.get('id', 'Desconocido')}")
-                                else:
-                                    with st.expander("Ver detalles de la respuesta"):
-                                        st.json(response_data)
-                            except:
-                                with st.expander("Ver detalles de la respuesta"):
+                            with st.expander("Detalles del agente"):
+                                try:
+                                    agent_info = response.json()
+                                    st.json(agent_info)
+                                except:
                                     st.code(response.text)
                         else:
-                            # Si el endpoint /models no funciona, intentar directamente con chat/completions
-                            completions_url = f"{api_endpoint}chat/completions"
-                            test_payload = {
-                                "model": "n/a",
-                                "messages": [{"role": "user", "content": "Hola"}],
-                                "max_tokens": 5
-                            }
-                            
-                            response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
-                            
-                            if response.status_code < 400:
-                                st.success(f"✅ Conexión exitosa con el agente (chat/completions)")
-                                with st.expander("Ver detalles de la respuesta"):
-                                    st.code(response.text)
-                            else:
-                                st.error(f"❌ Error al conectar con el agente. Código: {response.status_code}")
-                                with st.expander("Ver detalles del error"):
-                                    st.code(response.text)
+                            st.error(f"❌ Error al conectar con el agente. Código: {response.status_code}")
+                            with st.expander("Detalles del error"):
+                                st.code(response.text)
                     except Exception as e:
                         st.error(f"Error de conexión: {str(e)}")
             except Exception as e:
-                st.error(f"Error al verificar conexión: {str(e)}")
+                st.error(f"Error al verificar agente: {str(e)}")
 
 # Mostrar historial de conversación
 for message in st.session_state.messages:
@@ -313,14 +262,14 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Preparar historial para la API
-    api_history = st.session_state.messages[:-1]  # Excluir el mensaje actual
+    # Obtener el tipo de acción seleccionado
+    selected_action = action_type
     
     # Mostrar indicador de carga mientras se procesa
     with st.chat_message("assistant"):
-        with st.spinner("Pensando..."):
-            # Llamar al agente
-            response = query_agent(prompt, api_history)
+        with st.spinner("Procesando..."):
+            # Enviar acción al agente
+            response = send_agent_action(prompt, selected_action)
             
             if "error" in response:
                 st.error(f"Error: {response['error']}")
@@ -335,11 +284,6 @@ if prompt:
                 # Mostrar respuesta del asistente
                 response_text = response.get("response", "No se recibió respuesta del agente.")
                 st.markdown(response_text)
-                
-                # Mostrar información de recuperación si está disponible
-                if "retrieval" in response:
-                    with st.expander("Información de recuperación (retrieval)"):
-                        st.json(response["retrieval"])
                 
                 # Añadir respuesta al historial
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
@@ -368,4 +312,4 @@ with col2:
         )
 
 # Pie de página
-st.markdown("<div class='footer'>Agente de IA © 2025</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
