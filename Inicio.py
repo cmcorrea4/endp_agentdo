@@ -207,65 +207,93 @@ def query_ai_endpoint(prompt, history=None):
             if history:
                 payload["history"] = history
         
-        # Enviar solicitud al endpoint usando POST (más común para APIs de IA)
+        # Primero intentamos con GET ya que el endpoint no acepta POST
         try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+            # Convertir payload a query params para GET
+            params = {}
+            if api_type == "standard":
+                # Para API tipo OpenAI, simplificamos y solo enviamos lo esencial
+                params = {
+                    "prompt": prompt,
+                    "model": "gpt-4o-mini",
+                    "temperature": temperature,
+                    "max_tokens": max_length
+                }
+            else:
+                # Para otros tipos, intentamos convertir todo el payload
+                for key, value in payload.items():
+                    if not isinstance(value, (dict, list)):
+                        params[key] = value
+                    elif key == "messages" and isinstance(value, list):
+                        # Simplificar mensajes para GET
+                        params["prompt"] = value[-1]["content"] if value else prompt
             
-            # Verificar respuesta
+            response = requests.get(api_url, headers=headers, params=params, timeout=60)
+            
+            # Si GET funciona, procesamos la respuesta
             if response.status_code == 200:
-                response_data = response.json()
+                try:
+                    response_data = response.json()
+                except:
+                    # Si no podemos parsear la respuesta como JSON, devolvemos el texto
+                    return {"response": response.text}
                 
-                # Procesar la respuesta según el tipo de API
-                if api_type == "standard":  # OpenAI-like
-                    # Estructura estándar de OpenAI: { choices: [{ message: { content: "..." } }] }
-                    if "choices" in response_data and len(response_data["choices"]) > 0:
-                        response_text = response_data["choices"][0].get("message", {}).get("content", "")
-                        return {"response": response_text}
-                    else:
-                        return {"error": "Formato de respuesta inesperado", "details": str(response_data)}
+                # Procesamiento de la respuesta según el tipo
+                if isinstance(response_data, dict):
+                    # Buscar campos de texto
+                    for field in ["response", "text", "content", "result", "message", "output"]:
+                        if field in response_data and isinstance(response_data[field], str):
+                            return {"response": response_data[field]}
+                    
+                    # Si no encontramos un campo de texto, devolver todo
+                    return {"response": str(response_data)}
+                elif isinstance(response_data, str):
+                    return {"response": response_data}
                 else:
-                    # Para otros tipos de API, intentamos extraer "response" o "text" o retornamos todo
+                    return {"response": str(response_data)}
+            
+            # Si GET no funciona, intentamos con POST como fallback
+            elif response.status_code >= 400:
+                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+                
+                # Verificar respuesta del POST
+                if response.status_code == 200:
+                    try:
+                        response_data = response.json()
+                    except:
+                        return {"response": response.text}
+                    
+                    # Procesar la respuesta según el tipo de API
+                    if api_type == "standard":  # OpenAI-like
+                        # Estructura estándar de OpenAI: { choices: [{ message: { content: "..." } }] }
+                        if "choices" in response_data and len(response_data["choices"]) > 0:
+                            response_text = response_data["choices"][0].get("message", {}).get("content", "")
+                            return {"response": response_text}
+                    
+                    # Para otros tipos de API
                     if "response" in response_data:
                         return response_data
                     elif "text" in response_data:
                         return {"response": response_data["text"]}
                     else:
-                        # Intentar buscar algún campo con texto en la respuesta
+                        # Buscar campos relevantes
                         for key in response_data:
                             if isinstance(response_data[key], str) and len(response_data[key]) > 20:
                                 return {"response": response_data[key]}
-                        # Si no encontramos nada útil, devolvemos la respuesta completa
+                        
+                        # Si no encontramos nada útil
                         return {"response": str(response_data)}
-            
-            elif response.status_code == 405:  # Method Not Allowed
-                # Intentar con método GET como fallback (menos común)
-                try:
-                    if api_type == "standard":
-                        # Generalmente las APIs tipo OpenAI no soportan GET para completions
-                        return {"error": "El endpoint no acepta solicitudes POST", "details": response.text}
-                    else:
-                        # Convertir payload a query params para GET
-                        params = {}
-                        for key, value in payload.items():
-                            if not isinstance(value, (dict, list)):
-                                params[key] = value
-                        # Si hay listas o diccionarios, esto no funcionará bien, pero lo intentamos
-                        response = requests.get(api_url, headers=headers, params=params, timeout=30)
-                        if response.status_code == 200:
-                            return {"response": response.json()}
-                except Exception as e:
-                    pass  # Si falla el GET, regresamos el error original
-            
-            # Si llegamos aquí, hubo un error
-            return {
-                "error": f"Error en la solicitud. Código: {response.status_code}",
-                "details": response.text
-            }
-            
+                else:
+                    # Ambos métodos fallaron
+                    return {
+                        "error": f"No se pudo conectar con el endpoint: GET ({response.status_code}), POST ({response.status_code})",
+                        "details": response.text
+                    }
+        
         except requests.exceptions.RequestException as e:
             return {"error": f"Error en la solicitud HTTP: {str(e)}"}
         except Exception as e:
-            return {"error": f"Error inesperado: {str(e)}"}
+            return {"error": f"Error al procesar la respuesta: {str(e)}"}
     
     except Exception as e:
         return {"error": f"Error al comunicarse con el endpoint de IA: {str(e)}"}
@@ -291,37 +319,10 @@ with st.sidebar.expander("Probar conexión"):
                     # Mensaje de prueba mínimo
                     test_prompt = "Hola"
                     
-                    # Preparar payload según el tipo de API
-                    if api_type == "standard":  # OpenAI-like
-                        payload = {
-                            "model": "gpt-4o-mini",
-                            "messages": [{"role": "user", "content": test_prompt}],
-                            "temperature": 0.1,
-                            "max_tokens": 5
-                        }
-                    else:  # Digital Ocean u otro
-                        payload = {
-                            "prompt": test_prompt,
-                            "max_tokens": 5,
-                            "temperature": 0.1
-                        }
-                    
                     # Variable para controlar si ya se encontró una conexión exitosa
                     conexion_exitosa = False
                     
-                    # Intentar conexión POST
-                    if not conexion_exitosa:
-                        try:
-                            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-                            if response.status_code < 400:
-                                st.success(f"✅ Conexión exitosa (POST)")
-                                with st.expander("Ver detalles de la respuesta"):
-                                    st.code(response.text)
-                                conexion_exitosa = True
-                        except Exception as e:
-                            st.warning(f"No se pudo conectar usando POST: {str(e)}")
-                    
-                    # Si POST falló, intentar con GET
+                    # Intentar primero con GET
                     if not conexion_exitosa:
                         try:
                             # Simplificar para GET
@@ -334,6 +335,33 @@ with st.sidebar.expander("Probar conexión"):
                                 conexion_exitosa = True
                         except Exception as e:
                             st.warning(f"No se pudo conectar usando GET: {str(e)}")
+                    
+                    # Si GET falló, intentar con POST
+                    if not conexion_exitosa:
+                        # Preparar payload según el tipo de API
+                        if api_type == "standard":  # OpenAI-like
+                            payload = {
+                                "model": "gpt-4o-mini",
+                                "messages": [{"role": "user", "content": test_prompt}],
+                                "temperature": 0.1,
+                                "max_tokens": 5
+                            }
+                        else:  # Digital Ocean u otro
+                            payload = {
+                                "prompt": test_prompt,
+                                "max_tokens": 5,
+                                "temperature": 0.1
+                            }
+                            
+                        try:
+                            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+                            if response.status_code < 400:
+                                st.success(f"✅ Conexión exitosa (POST)")
+                                with st.expander("Ver detalles de la respuesta"):
+                                    st.code(response.text)
+                                conexion_exitosa = True
+                        except Exception as e:
+                            st.warning(f"No se pudo conectar usando POST: {str(e)}")
                     
                     # Si nada funcionó
                     if not conexion_exitosa:
