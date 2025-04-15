@@ -2,10 +2,11 @@ import streamlit as st
 import requests
 import json
 import time
+import os
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Agente de DigitalOcean",
+    page_title="Agente de IA",
     page_icon="🤖",
     layout="wide"
 )
@@ -46,65 +47,58 @@ st.markdown("""
 def initialize_session_vars():
     if "is_configured" not in st.session_state:
         st.session_state.is_configured = False
-    if "agent_id" not in st.session_state:
-        st.session_state.agent_id = ""
-    if "api_key" not in st.session_state:
-        st.session_state.api_key = ""
+    if "agent_endpoint" not in st.session_state:
+        st.session_state.agent_endpoint = ""
+    if "agent_access_key" not in st.session_state:
+        st.session_state.agent_access_key = ""
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "action_type" not in st.session_state:
-        st.session_state.action_type = "text_completion"
+    if "include_retrieval" not in st.session_state:
+        st.session_state.include_retrieval = False
 
 # Inicializar variables
 initialize_session_vars()
 
 # Título y descripción de la aplicación
-st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Agente de Inteligencia Artificial</h1>", unsafe_allow_html=True)
 
 # Pantalla de configuración inicial si aún no se ha configurado
 if not st.session_state.is_configured:
     st.markdown("<h2 class='subheader'>Configuración Inicial</h2>", unsafe_allow_html=True)
     
-    st.info("Por favor, configura los parámetros para conectar con tu agente de DigitalOcean.")
+    st.info("Por favor, configura los parámetros de conexión para el agente de IA.")
     
     # Campos para la configuración
-    agent_id = st.text_input(
-        "ID del Agente", 
-        placeholder="Ejemplo: 12345",
-        help="ID del agente de DigitalOcean con el que deseas interactuar"
+    agent_endpoint = st.text_input(
+        "URL del Endpoint del Agente", 
+        placeholder="https://tu-agente.dominio.com",
+        help="URL base del endpoint de tu agente de IA (sin '/api/v1/')"
     )
     
-    api_key = st.text_input(
-        "API Key de DigitalOcean", 
+    agent_access_key = st.text_input(
+        "Clave de Acceso", 
         type="password",
-        placeholder="Ingresa tu API key",
-        help="Tu clave de API para autenticar las solicitudes a DigitalOcean"
+        placeholder="Ingresa tu clave de acceso al agente",
+        help="Tu clave de acceso para autenticar las solicitudes"
     )
     
-    # Tipo de acción para el agente
-    action_type = st.selectbox(
-        "Tipo de Acción",
-        options=["Completar Texto", "Responder Preguntas", "Generar Imágenes", "Personalizada"],
-        index=0,
-        help="Tipo de acción que deseas realizar con el agente"
+    include_retrieval = st.checkbox(
+        "Incluir información de recuperación",
+        value=False,
+        help="Activa esta opción para incluir información de recuperación (retrieval) en la respuesta"
     )
-    
-    # Mapear selección a valor interno
-    action_type_value = "text_completion" if action_type == "Completar Texto" else \
-                        "question_answering" if action_type == "Responder Preguntas" else \
-                        "image_generation" if action_type == "Generar Imágenes" else "custom"
     
     col1, col2 = st.columns([1, 3])
     
     with col1:
         if st.button("Guardar configuración"):
-            if not agent_id or not api_key:
-                st.error("Por favor, ingresa tanto el ID del agente como la API Key")
+            if not agent_endpoint or not agent_access_key:
+                st.error("Por favor, ingresa tanto el endpoint como la clave de acceso")
             else:
                 # Guardar configuración en session_state
-                st.session_state.agent_id = agent_id
-                st.session_state.api_key = api_key
-                st.session_state.action_type = action_type_value
+                st.session_state.agent_endpoint = agent_endpoint
+                st.session_state.agent_access_key = agent_access_key
+                st.session_state.include_retrieval = include_retrieval
                 st.session_state.is_configured = True
                 st.success("¡Configuración guardada correctamente!")
                 time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
@@ -114,7 +108,7 @@ if not st.session_state.is_configured:
     st.stop()
 
 # Una vez configurado, mostrar la interfaz normal
-st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean para realizar acciones.</p>", unsafe_allow_html=True)
+st.markdown("<p class='subheader'>Interactúa con el agente de IA para obtener respuestas inteligentes.</p>", unsafe_allow_html=True)
 
 # Sidebar para configuración
 st.sidebar.title("Configuración")
@@ -122,145 +116,99 @@ st.sidebar.title("Configuración")
 # Mostrar información de conexión actual
 st.sidebar.success("✅ Configuración cargada")
 with st.sidebar.expander("Ver configuración actual"):
-    st.code(f"ID del Agente: {st.session_state.agent_id}\nAPI Key: {'*'*10}\nTipo de Acción: {st.session_state.action_type}")
+    st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
+    st.code(f"Incluir retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
     if st.button("Editar configuración"):
         st.session_state.is_configured = False
         st.rerun()
 
-# Ajustes avanzados según el tipo de acción
+# Ajustes avanzados
 with st.sidebar.expander("Ajustes avanzados"):
-    if st.session_state.action_type == "text_completion" or st.session_state.action_type == "question_answering":
-        temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
-                              help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
-        max_length = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
-                              help="Número máximo de tokens en la respuesta.")
-    elif st.session_state.action_type == "image_generation":
-        image_size = st.selectbox(
-            "Tamaño de imagen",
-            options=["256x256", "512x512", "1024x1024"],
-            index=1
-        )
-        image_style = st.selectbox(
-            "Estilo de imagen",
-            options=["Natural", "Cartoon", "Artistic", "Realistic"],
-            index=0
-        )
+    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
+                           help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
+    
+    max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
+                          help="Número máximo de tokens en la respuesta.")
+    
+    include_retrieval = st.checkbox(
+        "Incluir información de recuperación",
+        value=st.session_state.include_retrieval,
+        help="Activa esta opción para incluir información de recuperación (retrieval) en la respuesta"
+    )
+    # Actualizar la configuración de retrieval si cambia
+    if include_retrieval != st.session_state.include_retrieval:
+        st.session_state.include_retrieval = include_retrieval
 
-# Función para enviar acción al agente de DigitalOcean
-def send_agent_action(prompt, history=None):
+# Función para enviar solicitud al agente de IA
+def query_agent(prompt, history=None):
     try:
-        # Obtener datos desde session_state
-        agent_id = st.session_state.agent_id
-        api_key = st.session_state.api_key
-        action_type = st.session_state.action_type
+        # Obtener configuración del agente
+        agent_endpoint = st.session_state.agent_endpoint
+        agent_access_key = st.session_state.agent_access_key
+        include_retrieval = st.session_state.include_retrieval
         
-        if not agent_id or not api_key:
-            return {"error": "Falta configuración de ID del agente o API key."}
+        if not agent_endpoint or not agent_access_key:
+            return {"error": "Las credenciales de API no están configuradas correctamente."}
         
-        # Construir URL según el formato de DigitalOcean
-        base_url = "https://api.digitalocean.com/v2/agents"
-        if action_type in ["text_completion", "question_answering"]:
-            # Para completar texto o responder preguntas
-            endpoint_url = f"{base_url}/{agent_id}/actions"
-        elif action_type == "image_generation":
-            # Para generar imágenes
-            endpoint_url = f"{base_url}/{agent_id}/images"
-        else:
-            # Para acción personalizada
-            endpoint_url = f"{base_url}/{agent_id}/actions"
+        # Asegurarse de que el endpoint termine con /api/v1/
+        api_endpoint = agent_endpoint
+        if not api_endpoint.endswith("/"):
+            api_endpoint += "/"
+        if not api_endpoint.endswith("api/v1/"):
+            api_endpoint += "api/v1/"
         
-        # Preparar headers con autenticación
+        # Preparar URL completa para chat completions
+        completions_url = f"{api_endpoint}chat/completions"
+        
+        # Preparar los headers
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {agent_access_key}",
             "Content-Type": "application/json"
         }
         
-        # Construir payload según el tipo de acción
-        if action_type == "text_completion":
-            payload = {
-                "type": "completion",
-                "input": prompt,
-                "parameters": {
-                    "temperature": temperature,
-                    "max_tokens": max_length
-                }
-            }
-            if history:
-                payload["context"] = format_history_for_digitalocean(history)
-                
-        elif action_type == "question_answering":
-            payload = {
-                "type": "question_answering",
-                "question": prompt,
-                "parameters": {
-                    "temperature": temperature,
-                    "max_tokens": max_length
-                }
-            }
-            if history:
-                payload["context"] = format_history_for_digitalocean(history)
-                
-        elif action_type == "image_generation":
-            payload = {
-                "prompt": prompt,
-                "parameters": {
-                    "size": image_size,
-                    "style": image_style.lower()
-                }
-            }
-            
-        else:  # acción personalizada
-            payload = {
-                "type": "custom",
-                "input": prompt,
-                "parameters": {
-                    "max_tokens": 1000,
-                    "temperature": 0.7
-                }
-            }
-            if history:
-                payload["context"] = format_history_for_digitalocean(history)
+        # Preparar los mensajes en formato OpenAI
+        messages = []
+        if history:
+            messages.extend([{"role": msg["role"], "content": msg["content"]} for msg in history])
+        messages.append({"role": "user", "content": prompt})
         
-        # Enviar solicitud POST (las acciones de agentes generalmente usan POST)
+        # Preparar el payload
+        payload = {
+            "model": "n/a",  # El modelo no es relevante para el agente
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        
+        # Añadir extra_body si se requiere información de recuperación
+        if include_retrieval:
+            payload["extra_body"] = {"include_retrieval_info": True}
+        
+        # Enviar solicitud POST
         try:
-            response = requests.post(endpoint_url, headers=headers, json=payload, timeout=60)
+            response = requests.post(completions_url, headers=headers, json=payload, timeout=60)
             
             # Verificar respuesta
-            if response.status_code == 200 or response.status_code == 201:
+            if response.status_code == 200:
                 try:
                     response_data = response.json()
                     
-                    # Procesar la respuesta según el tipo de acción
-                    if action_type == "text_completion" or action_type == "question_answering":
-                        # Buscar el contenido de la respuesta en diferentes posibles estructuras
-                        if "action" in response_data and "result" in response_data["action"]:
-                            return {"response": response_data["action"]["result"]}
-                        elif "result" in response_data:
-                            return {"response": response_data["result"]}
-                        elif "output" in response_data:
-                            return {"response": response_data["output"]}
-                        else:
-                            # Si no encontramos una estructura estándar, devolvemos todo
-                            return {"response": str(response_data)}
+                    # Procesar la respuesta en formato OpenAI
+                    if "choices" in response_data and len(response_data["choices"]) > 0:
+                        choice = response_data["choices"][0]
+                        if "message" in choice and "content" in choice["message"]:
+                            result = {
+                                "response": choice["message"]["content"]
+                            }
                             
-                    elif action_type == "image_generation":
-                        # Para generación de imágenes, devolver URL o datos de la imagen
-                        if "image_url" in response_data:
-                            return {"response": f"![Imagen generada]({response_data['image_url']})", "image_url": response_data["image_url"]}
-                        elif "data" in response_data and "url" in response_data["data"]:
-                            return {"response": f"![Imagen generada]({response_data['data']['url']})", "image_url": response_data["data"]["url"]}
-                        else:
-                            return {"response": "Imagen generada correctamente, pero no se pudo obtener la URL."}
+                            # Añadir información de recuperación si está disponible
+                            if include_retrieval and "retrieval" in response_data:
+                                result["retrieval"] = response_data["retrieval"]
+                            
+                            return result
                     
-                    else:  # Acción personalizada
-                        # Buscar una respuesta en diferentes campos posibles
-                        for field in ["result", "output", "response", "data", "content"]:
-                            if field in response_data and isinstance(response_data[field], str):
-                                return {"response": response_data[field]}
-                        
-                        # Si no encontramos un campo específico, devolvemos toda la respuesta
-                        return {"response": str(response_data)}
-                
+                    # Si no se encuentra la estructura esperada
+                    return {"error": "Formato de respuesta inesperado", "details": str(response_data)}
                 except ValueError:
                     # Si no es JSON, devolver el texto plano
                     return {"response": response.text}
@@ -279,52 +227,70 @@ def send_agent_action(prompt, history=None):
     except Exception as e:
         return {"error": f"Error al comunicarse con el agente: {str(e)}"}
 
-# Función para formatear el historial para DigitalOcean
-def format_history_for_digitalocean(history):
-    formatted_history = []
-    for msg in history:
-        role = "assistant" if msg["role"] == "assistant" else "user"
-        formatted_history.append({
-            "role": role,
-            "content": msg["content"]
-        })
-    return formatted_history
-
 # Sección para probar conexión con el agente
 with st.sidebar.expander("Probar conexión"):
-    if st.button("Verificar conexión"):
+    if st.button("Verificar endpoint"):
         with st.spinner("Verificando conexión..."):
             try:
-                agent_id = st.session_state.agent_id
-                api_key = st.session_state.api_key
+                agent_endpoint = st.session_state.agent_endpoint
+                agent_access_key = st.session_state.agent_access_key
                 
-                if not agent_id or not api_key:
-                    st.error("Falta configuración de ID del agente o API key")
+                if not agent_endpoint or not agent_access_key:
+                    st.error("Falta configuración del endpoint o clave de acceso")
                 else:
-                    # Construir URL para verificar el estado del agente
-                    check_url = f"https://api.digitalocean.com/v2/agents/{agent_id}"
+                    # Asegurarse de que el endpoint termine con /api/v1/
+                    api_endpoint = agent_endpoint
+                    if not api_endpoint.endswith("/"):
+                        api_endpoint += "/"
+                    if not api_endpoint.endswith("api/v1/"):
+                        api_endpoint += "api/v1/"
+                    
+                    # Preparar URL para modelos (endpoint común para verificar)
+                    models_url = f"{api_endpoint}models"
                     
                     # Preparar headers
                     headers = {
-                        "Authorization": f"Bearer {api_key}",
+                        "Authorization": f"Bearer {agent_access_key}",
                         "Content-Type": "application/json"
                     }
                     
-                    # Intentar obtener información del agente (GET)
+                    # Intentar hacer una solicitud simple para verificar conexión
                     try:
-                        response = requests.get(check_url, headers=headers, timeout=10)
-                        if response.status_code == 200:
+                        response = requests.get(models_url, headers=headers, timeout=10)
+                        
+                        if response.status_code < 400:
                             st.success(f"✅ Conexión exitosa con el agente")
-                            with st.expander("Ver detalles del agente"):
-                                try:
-                                    agent_info = response.json()
-                                    st.json(agent_info)
-                                except:
+                            try:
+                                response_data = response.json()
+                                if "data" in response_data:
+                                    st.write("Modelos disponibles:")
+                                    for model in response_data["data"]:
+                                        st.write(f"- {model.get('id', 'Desconocido')}")
+                                else:
+                                    with st.expander("Ver detalles de la respuesta"):
+                                        st.json(response_data)
+                            except:
+                                with st.expander("Ver detalles de la respuesta"):
                                     st.code(response.text)
                         else:
-                            st.error(f"❌ Error al conectar con el agente. Código: {response.status_code}")
-                            with st.expander("Ver detalles del error"):
-                                st.code(response.text)
+                            # Si el endpoint /models no funciona, intentar directamente con chat/completions
+                            completions_url = f"{api_endpoint}chat/completions"
+                            test_payload = {
+                                "model": "n/a",
+                                "messages": [{"role": "user", "content": "Hola"}],
+                                "max_tokens": 5
+                            }
+                            
+                            response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
+                            
+                            if response.status_code < 400:
+                                st.success(f"✅ Conexión exitosa con el agente (chat/completions)")
+                                with st.expander("Ver detalles de la respuesta"):
+                                    st.code(response.text)
+                            else:
+                                st.error(f"❌ Error al conectar con el agente. Código: {response.status_code}")
+                                with st.expander("Ver detalles del error"):
+                                    st.code(response.text)
                     except Exception as e:
                         st.error(f"Error de conexión: {str(e)}")
             except Exception as e:
@@ -335,7 +301,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Campo de entrada para el prompt
+# Campo de entrada para el mensaje
 prompt = st.chat_input("Escribe tu mensaje aquí...")
 
 # Procesar la entrada del usuario
@@ -352,9 +318,9 @@ if prompt:
     
     # Mostrar indicador de carga mientras se procesa
     with st.chat_message("assistant"):
-        with st.spinner("Procesando..."):
-            # Enviar acción al agente
-            response = send_agent_action(prompt, api_history)
+        with st.spinner("Pensando..."):
+            # Llamar al agente
+            response = query_agent(prompt, api_history)
             
             if "error" in response:
                 st.error(f"Error: {response['error']}")
@@ -368,14 +334,12 @@ if prompt:
             else:
                 # Mostrar respuesta del asistente
                 response_text = response.get("response", "No se recibió respuesta del agente.")
-                
-                # Si es una imagen, mostrar la imagen
-                if "image_url" in response:
-                    st.image(response["image_url"], caption="Imagen generada")
-                    # Ajustar el texto para guardar solo la URL en el historial
-                    response_text = f"[Imagen generada]({response['image_url']})"
-                
                 st.markdown(response_text)
+                
+                # Mostrar información de recuperación si está disponible
+                if "retrieval" in response:
+                    with st.expander("Información de recuperación (retrieval)"):
+                        st.json(response["retrieval"])
                 
                 # Añadir respuesta al historial
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
@@ -404,4 +368,4 @@ with col2:
         )
 
 # Pie de página
-st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Agente de IA © 2025</div>", unsafe_allow_html=True)
