@@ -306,33 +306,39 @@ with st.sidebar.expander("Probar conexión"):
                             "temperature": 0.1
                         }
                     
+                    # Variable para controlar si ya se encontró una conexión exitosa
+                    conexion_exitosa = False
+                    
                     # Intentar conexión POST
-                    try:
-                        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-                        if response.status_code < 400:
-                            st.success(f"✅ Conexión exitosa (POST)")
-                            with st.expander("Ver detalles de la respuesta"):
-                                st.code(response.text)
-                            return
-                    except Exception as e:
-                        st.warning(f"No se pudo conectar usando POST: {str(e)}")
+                    if not conexion_exitosa:
+                        try:
+                            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+                            if response.status_code < 400:
+                                st.success(f"✅ Conexión exitosa (POST)")
+                                with st.expander("Ver detalles de la respuesta"):
+                                    st.code(response.text)
+                                conexion_exitosa = True
+                        except Exception as e:
+                            st.warning(f"No se pudo conectar usando POST: {str(e)}")
                     
                     # Si POST falló, intentar con GET
-                    try:
-                        # Simplificar para GET
-                        params = {"prompt": test_prompt}
-                        response = requests.get(api_url, headers=headers, params=params, timeout=10)
-                        if response.status_code < 400:
-                            st.success(f"✅ Conexión exitosa (GET)")
-                            with st.expander("Ver detalles de la respuesta"):
-                                st.code(response.text)
-                            return
-                    except Exception as e:
-                        st.warning(f"No se pudo conectar usando GET: {str(e)}")
+                    if not conexion_exitosa:
+                        try:
+                            # Simplificar para GET
+                            params = {"prompt": test_prompt}
+                            response = requests.get(api_url, headers=headers, params=params, timeout=10)
+                            if response.status_code < 400:
+                                st.success(f"✅ Conexión exitosa (GET)")
+                                with st.expander("Ver detalles de la respuesta"):
+                                    st.code(response.text)
+                                conexion_exitosa = True
+                        except Exception as e:
+                            st.warning(f"No se pudo conectar usando GET: {str(e)}")
                     
                     # Si nada funcionó
-                    st.error("❌ No se pudo establecer conexión con el endpoint.")
-                    st.info("Sugerencias: Verifica la URL, la API key, y asegúrate de que el endpoint esté activo.")
+                    if not conexion_exitosa:
+                        st.error("❌ No se pudo establecer conexión con el endpoint.")
+                        st.info("Sugerencias: Verifica la URL, la API key, y asegúrate de que el endpoint esté activo.")
                     
             except Exception as e:
                 st.error(f"Error de conexión: {str(e)}")
