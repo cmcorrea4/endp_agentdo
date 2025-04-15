@@ -155,7 +155,7 @@ with st.sidebar.expander("Ver configuración actual"):
 # Opciones de modelo (si hay varios disponibles)
 model_option = st.sidebar.selectbox(
     "Seleccione el modelo",
-    ["GPT-3.5", "GPT-4", "Claude", "Personalizado"]
+    ["gpt-4o-mini-2024-07-18", "gpt-4o-mini-2024-07-18", "Claude", "Personalizado"]
 )
 
 # Ajustes avanzados
