@@ -178,9 +178,12 @@ def create_pdf(messages):
     buffer.seek(0)
     return buffer
 
-# Función para crear audio de texto
+# Función para crear audio de texto (versión corregida)
 def text_to_speech(text):
     try:
+        # Debug para ver lo que llega
+        st.write(f"Generando audio para un texto de {len(text)} caracteres")
+        
         # Limitar la longitud del texto (gTTS tiene límites)
         if len(text) > 5000:
             text = text[:5000] + "... [Texto truncado debido a limitaciones]"
@@ -188,178 +191,22 @@ def text_to_speech(text):
         # Crear objeto de texto a voz en español
         tts = gTTS(text=text, lang='es', slow=False)
         
-        # Guardar a un buffer en memoria
-        audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_buffer.seek(0)
+        # Usar un archivo temporal en lugar de BytesIO para asegurar compatibilidad
+        temp_audio_file = "temp_audio.mp3"
+        tts.save(temp_audio_file)
         
-        # Convertir a base64 para incrustar en HTML
-        audio_base64 = base64.b64encode(audio_buffer.read()).decode()
+        # Leer el archivo como binario
+        with open(temp_audio_file, "rb") as audio_file:
+            audio_bytes = audio_file.read()
         
-        return audio_base64
+        # Eliminar archivo temporal
+        if os.path.exists(temp_audio_file):
+            os.remove(temp_audio_file)
+        
+        return audio_bytes
     except Exception as e:
         st.error(f"Error al generar audio: {str(e)}")
         return None
-
-# Función para mostrar el audio player
-def display_audio_player(audio_base64):
-    audio_html = f"""
-        <audio controls>
-            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            Tu navegador no soporta el elemento de audio.
-        </audio>
-    """
-    return st.markdown(audio_html, unsafe_allow_html=True)
-
-# Función para verificar la conexión con el agente
-def check_endpoint():
-    try:
-        agent_endpoint = st.session_state.agent_endpoint
-        agent_access_key = st.session_state.agent_access_key
-        
-        if not agent_endpoint or not agent_access_key:
-            return {"status": "error", "message": "Falta configuración del endpoint o clave de acceso"}
-        
-        # Asegurarse de que el endpoint termine correctamente
-        if not agent_endpoint.endswith("/"):
-            agent_endpoint += "/"
-        
-        # Verificar si la documentación está disponible
-        docs_url = f"{agent_endpoint}docs"
-        
-        # Preparar headers
-        headers = {
-            "Authorization": f"Bearer {agent_access_key}",
-            "Content-Type": "application/json"
-        }
-        
-        results = []
-        
-        # Intentar verificar si hay documentación disponible
-        try:
-            response = requests.get(docs_url, timeout=10)
-            
-            if response.status_code < 400:
-                results.append({"status": "success", "message": f"✅ Documentación del agente accesible en: {docs_url}"})
-            
-            # Intentar hacer una solicitud simple para verificar la conexión
-            completions_url = f"{agent_endpoint}api/v1/chat/completions"
-            test_payload = {
-                "model": "n/a",
-                "messages": [{"role": "user", "content": "Hello"}],
-                "max_tokens": 5,
-                "stream": False
-            }
-            
-            response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
-            
-            if response.status_code < 400:
-                results.append({"status": "success", "message": "✅ Conexión exitosa con el endpoint del agente"})
-                
-                # Obtener detalles de la respuesta para mostrar
-                try:
-                    resp_json = response.json()
-                    results.append({"status": "info", "message": "🔍 La API está configurada correctamente y responde a las solicitudes.", "details": resp_json})
-                except:
-                    results.append({"status": "info", "message": "🔍 La API está configurada correctamente y responde a las solicitudes.", "details": response.text})
-            else:
-                results.append({"status": "error", "message": f"❌ Error al conectar con el agente. Código: {response.status_code}", "details": response.text})
-                
-        except Exception as e:
-            results.append({"status": "error", "message": f"Error de conexión: {str(e)}"})
-    
-        return results
-        
-    except Exception as e:
-        return [{"status": "error", "message": f"Error al verificar endpoint: {str(e)}"}]
-
-# Función para enviar consulta al agente
-def query_agent(prompt, history=None):
-    try:
-        # Obtener configuración del agente
-        agent_endpoint = st.session_state.agent_endpoint
-        agent_access_key = st.session_state.agent_access_key
-        include_retrieval = st.session_state.include_retrieval
-        include_functions = st.session_state.include_functions
-        include_guardrails = st.session_state.include_guardrails
-        
-        if not agent_endpoint or not agent_access_key:
-            return {"error": "Las credenciales de API no están configuradas correctamente."}
-        
-        # Asegurarse de que el endpoint termine correctamente
-        if not agent_endpoint.endswith("/"):
-            agent_endpoint += "/"
-        
-        # Construir URL para chat completions
-        completions_url = f"{agent_endpoint}api/v1/chat/completions"
-        
-        # Preparar headers con autenticación
-        headers = {
-            "Authorization": f"Bearer {agent_access_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # Preparar los mensajes en formato OpenAI
-        messages = []
-        if history:
-            messages.extend([{"role": msg["role"], "content": msg["content"]} for msg in history])
-        messages.append({"role": "user", "content": prompt})
-        
-        # Construir el payload
-        payload = {
-            "model": "n/a",  # El modelo no es relevante para el agente
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-            "include_retrieval_info": include_retrieval,
-            "include_functions_info": include_functions,
-            "include_guardrails_info": include_guardrails
-        }
-        
-        # Enviar solicitud POST
-        try:
-            response = requests.post(completions_url, headers=headers, json=payload, timeout=60)
-            
-            # Verificar respuesta
-            if response.status_code == 200:
-                try:
-                    response_data = response.json()
-                    
-                    # Procesar la respuesta en formato OpenAI
-                    if "choices" in response_data and len(response_data["choices"]) > 0:
-                        choice = response_data["choices"][0]
-                        if "message" in choice and "content" in choice["message"]:
-                            result = {
-                                "response": choice["message"]["content"]
-                            }
-                            
-                            # Añadir información adicional si está disponible
-                            for info_type in ["retrieval", "functions", "guardrails"]:
-                                if info_type in response_data:
-                                    result[info_type] = response_data[info_type]
-                            
-                            return result
-                    
-                    # Si no se encuentra la estructura esperada
-                    return {"error": "Formato de respuesta inesperado", "details": str(response_data)}
-                except ValueError:
-                    # Si no es JSON, devolver el texto plano
-                    return {"response": response.text}
-            else:
-                # Error en la respuesta
-                error_message = f"Error en la solicitud. Código: {response.status_code}"
-                try:
-                    error_details = response.json()
-                    return {"error": error_message, "details": str(error_details)}
-                except:
-                    return {"error": error_message, "details": response.text}
-                
-        except requests.exceptions.RequestException as e:
-            return {"error": f"Error en la solicitud HTTP: {str(e)}"}
-        
-    except Exception as e:
-        return {"error": f"Error al comunicarse con el agente: {str(e)}"}
 
 # Título y descripción de la aplicación
 st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
@@ -489,6 +336,156 @@ with st.sidebar.expander("Ajustes avanzados"):
         st.session_state.include_guardrails = include_guardrails
         st.session_state.tts_enabled = tts_enabled
 
+# Función para enviar consulta al agente
+def query_agent(prompt, history=None):
+    try:
+        # Obtener configuración del agente
+        agent_endpoint = st.session_state.agent_endpoint
+        agent_access_key = st.session_state.agent_access_key
+        include_retrieval = st.session_state.include_retrieval
+        include_functions = st.session_state.include_functions
+        include_guardrails = st.session_state.include_guardrails
+        
+        if not agent_endpoint or not agent_access_key:
+            return {"error": "Las credenciales de API no están configuradas correctamente."}
+        
+        # Asegurarse de que el endpoint termine correctamente
+        if not agent_endpoint.endswith("/"):
+            agent_endpoint += "/"
+        
+        # Construir URL para chat completions
+        completions_url = f"{agent_endpoint}api/v1/chat/completions"
+        
+        # Preparar headers con autenticación
+        headers = {
+            "Authorization": f"Bearer {agent_access_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Preparar los mensajes en formato OpenAI
+        messages = []
+        if history:
+            messages.extend([{"role": msg["role"], "content": msg["content"]} for msg in history])
+        messages.append({"role": "user", "content": prompt})
+        
+        # Construir el payload
+        payload = {
+            "model": "n/a",  # El modelo no es relevante para el agente
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+            "include_retrieval_info": include_retrieval,
+            "include_functions_info": include_functions,
+            "include_guardrails_info": include_guardrails
+        }
+        
+        # Enviar solicitud POST
+        try:
+            response = requests.post(completions_url, headers=headers, json=payload, timeout=60)
+            
+            # Verificar respuesta
+            if response.status_code == 200:
+                try:
+                    response_data = response.json()
+                    
+                    # Procesar la respuesta en formato OpenAI
+                    if "choices" in response_data and len(response_data["choices"]) > 0:
+                        choice = response_data["choices"][0]
+                        if "message" in choice and "content" in choice["message"]:
+                            result = {
+                                "response": choice["message"]["content"]
+                            }
+                            
+                            # Añadir información adicional si está disponible
+                            for info_type in ["retrieval", "functions", "guardrails"]:
+                                if info_type in response_data:
+                                    result[info_type] = response_data[info_type]
+                            
+                            return result
+                    
+                    # Si no se encuentra la estructura esperada
+                    return {"error": "Formato de respuesta inesperado", "details": str(response_data)}
+                except ValueError:
+                    # Si no es JSON, devolver el texto plano
+                    return {"response": response.text}
+            else:
+                # Error en la respuesta
+                error_message = f"Error en la solicitud. Código: {response.status_code}"
+                try:
+                    error_details = response.json()
+                    return {"error": error_message, "details": str(error_details)}
+                except:
+                    return {"error": error_message, "details": response.text}
+                
+        except requests.exceptions.RequestException as e:
+            return {"error": f"Error en la solicitud HTTP: {str(e)}"}
+        
+    except Exception as e:
+        return {"error": f"Error al comunicarse con el agente: {str(e)}"}
+
+# Función para verificar la conexión con el agente
+def check_endpoint():
+    try:
+        agent_endpoint = st.session_state.agent_endpoint
+        agent_access_key = st.session_state.agent_access_key
+        
+        if not agent_endpoint or not agent_access_key:
+            return [{"status": "error", "message": "Falta configuración del endpoint o clave de acceso"}]
+        
+        # Asegurarse de que el endpoint termine correctamente
+        if not agent_endpoint.endswith("/"):
+            agent_endpoint += "/"
+        
+        # Verificar si la documentación está disponible
+        docs_url = f"{agent_endpoint}docs"
+        
+        # Preparar headers
+        headers = {
+            "Authorization": f"Bearer {agent_access_key}",
+            "Content-Type": "application/json"
+        }
+        
+        results = []
+        
+        # Intentar verificar si hay documentación disponible
+        try:
+            response = requests.get(docs_url, timeout=10)
+            
+            if response.status_code < 400:
+                results.append({"status": "success", "message": f"✅ Documentación del agente accesible en: {docs_url}"})
+            
+            # Intentar hacer una solicitud simple para verificar la conexión
+            completions_url = f"{agent_endpoint}api/v1/chat/completions"
+            test_payload = {
+                "model": "n/a",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 5,
+                "stream": False
+            }
+            
+            response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
+            
+            if response.status_code < 400:
+                results.append({"status": "success", "message": "✅ Conexión exitosa con el endpoint del agente"})
+                
+                # Obtener detalles de la respuesta para mostrar
+                try:
+                    resp_json = response.json()
+                    results.append({"status": "info", "message": "🔍 La API está configurada correctamente y responde a las solicitudes.", "details": resp_json})
+                except:
+                    results.append({"status": "info", "message": "🔍 La API está configurada correctamente y responde a las solicitudes.", "details": response.text})
+            else:
+                results.append({"status": "error", "message": f"❌ Error al conectar con el agente. Código: {response.status_code}", "details": response.text})
+                
+        except Exception as e:
+            results.append({"status": "error", "message": f"Error de conexión: {str(e)}"})
+    
+        return results
+        
+    except Exception as e:
+        return [{"status": "error", "message": f"Error al verificar endpoint: {str(e)}"}]
+
 # Sección para probar conexión con el agente
 with st.sidebar.expander("Probar conexión"):
     if st.button("Verificar endpoint"):
@@ -534,7 +531,8 @@ for i, message in enumerate(st.session_state.messages):
             
             # Mostrar reproductor de audio si tenemos datos
             if message_id in st.session_state.audio_responses:
-                display_audio_player(st.session_state.audio_responses[message_id])
+                # Usar el método de Streamlit para mostrar audio
+                st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
 
 # Campo de entrada para el mensaje
 prompt = st.chat_input("Escribe tu mensaje aquí...")
@@ -573,12 +571,14 @@ if prompt:
                 
                 # Generar audio si TTS está habilitado
                 if st.session_state.tts_enabled:
-                    audio_data = text_to_speech(response_text)
-                    if audio_data:
-                        display_audio_player(audio_data)
-                        # Guardar para la historia
-                        message_id = f"msg_{len(st.session_state.messages)}"
-                        st.session_state.audio_responses[message_id] = audio_data
+                    with st.spinner("Generando audio..."):
+                        audio_data = text_to_speech(response_text)
+                        if audio_data:
+                            # Usar el método de Streamlit para mostrar audio
+                            st.audio(audio_data, format="audio/mp3")
+                            # Guardar para la historia
+                            message_id = f"msg_{len(st.session_state.messages)}"
+                            st.session_state.audio_responses[message_id] = audio_data
                 
                 # Mostrar información adicional si está disponible
                 for info_type, display_name in [
