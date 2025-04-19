@@ -27,7 +27,7 @@ st.markdown("""
         font-size: 2.5rem;
         color: #1E88E5;
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
     }
     .subheader {
         font-size: 1.5rem;
@@ -55,12 +55,19 @@ st.markdown("""
     .stAudio > audio {
         width: 100%; 
     }
-    .custom-input {
-        margin-bottom: 20px;
+    /* Ocultar la barra de título del sidebar */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    /* Mejorar el espacio para el chat */
+    .stChatMessageContent {
+        padding: 0.5rem;
     }
-    /* Hacer el cuadro de chat más grande */
-    textarea {
-        min-height: 100px !important;
+    .stChatMessage {
+        margin-bottom: 0.5rem;
+    }
+    /* Dar más espacio a la conversación */
+    section.main > div {
+        padding-bottom: 5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -109,12 +116,6 @@ def clear_conversation():
 # Función para cambiar estado TTS
 def toggle_tts():
     st.session_state.tts_enabled = not st.session_state.tts_enabled
-
-# Función para manejar envío de mensaje
-def send_message():
-    user_input = st.session_state.user_input
-    if user_input and user_input.strip():
-        st.session_state.pending_message = user_input
 
 # Función para crear PDF de la conversación
 def create_pdf(messages):
@@ -433,20 +434,7 @@ if not st.session_state.is_configured:
     st.stop()
 
 # Una vez configurado, mostrar la interfaz normal
-st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
-
-# NUEVA POSICIÓN PARA EL CAMPO DE ENTRADA DE TEXTO, ARRIBA DE LOS BOTONES
-with st.form(key="message_form"):
-    user_input = st.text_area(
-        "Escribe tu mensaje",
-        key="user_input",
-        height=120,
-        help="Escribe aquí tu pregunta o mensaje para el agente",
-        placeholder="Escribe tu mensaje aquí..."
-    )
-    submit_button = st.form_submit_button("Enviar mensaje")
-    if submit_button and user_input.strip():
-        st.session_state.pending_message = user_input
+st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean</p>", unsafe_allow_html=True)
 
 # Sidebar para configuración
 st.sidebar.title("Configuración")
@@ -534,17 +522,29 @@ with st.sidebar.expander("Probar conexión"):
                     except:
                         st.code(str(result["details"]))
 
-# Sección de opciones adicionales
-st.divider()
+# MOVER TODAS LAS OPCIONES AL SIDEBAR
+st.sidebar.divider()
+st.sidebar.subheader("Opciones de conversación")
 
-col1, col2, col3 = st.columns(3)
+# Sección de opciones adicionales en la barra lateral
+button_col1, button_col2 = st.sidebar.columns(2)
 
-with col1:
+with button_col1:
     if st.button("🗑️ Limpiar conversación"):
         clear_conversation()
         st.rerun()
 
-with col2:
+with button_col2:
+    # Opción para cambiar el estado de TTS
+    tts_status = "Habilitado" if st.session_state.tts_enabled else "Deshabilitado"
+    if st.button(f"🔊 TTS: {tts_status}"):
+        toggle_tts()
+        st.rerun()
+
+# Opciones de exportación
+save_col1, save_col2 = st.sidebar.columns(2)
+
+with save_col1:
     if len(st.session_state.messages) > 0:
         # Generar PDF
         pdf_buffer = create_pdf(st.session_state.messages)
@@ -559,7 +559,7 @@ with col2:
     else:
         st.button("📄 Guardar como PDF", disabled=True)
 
-with col3:
+with save_col2:
     if len(st.session_state.messages) > 0:
         # Convertir historial a formato JSON
         conversation_data = json.dumps(st.session_state.messages, indent=2)
@@ -574,24 +574,9 @@ with col3:
     else:
         st.button("💾 Guardar como JSON", disabled=True)
 
-# Configuración de TTS en la parte inferior
-st.divider()
-tts_col1, tts_col2 = st.columns(2)
-
-with tts_col1:
-    # Mostrar estado actual de TTS
-    tts_status = "Habilitado" if st.session_state.tts_enabled else "Deshabilitado"
-    st.write(f"🔊 Text-to-Speech: {tts_status}")
-
-with tts_col2:
-    # Botón para cambiar el estado de TTS
-    if st.button("Cambiar estado de TTS"):
-        toggle_tts()
-        st.rerun()
-
 # Mostrar historial de conversación
-st.divider()
-st.subheader("Conversación")
+# Antes de mostrar la conversación, asegúrate de que hay espacio suficiente
+st.markdown("<div style='min-height: 400px;'></div>", unsafe_allow_html=True)
 
 for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
@@ -611,6 +596,12 @@ for i, message in enumerate(st.session_state.messages):
             if message_id in st.session_state.audio_responses:
                 # Usar el método de Streamlit para mostrar audio con autoplay=False
                 st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
+
+# Campo de entrada de chat
+prompt = st.chat_input("Escribe tu mensaje aquí...")
+if prompt:
+    st.session_state.pending_message = prompt
+    st.rerun()
 
 # Procesar la entrada del usuario si hay un mensaje pendiente
 if st.session_state.pending_message:
