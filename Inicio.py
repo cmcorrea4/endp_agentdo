@@ -2,6 +2,15 @@ import streamlit as st
 import requests
 import json
 import time
+import io
+import base64
+import os
+from gtts import gTTS
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+from reportlab.lib import colors
 
 # Configuración de la página
 st.set_page_config(
@@ -39,6 +48,18 @@ st.markdown("""
         padding: 10px;
         font-size: 0.8rem;
     }
+    .audio-btn {
+        margin-top: 5px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
+    .audio-btn:hover {
+        background-color: #45a049;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,9 +79,112 @@ def initialize_session_vars():
         st.session_state.include_functions = False
     if "include_guardrails" not in st.session_state:
         st.session_state.include_guardrails = False
+    if "audio_responses" not in st.session_state:
+        st.session_state.audio_responses = {}
+    if "tts_enabled" not in st.session_state:
+        st.session_state.tts_enabled = False
 
 # Inicializar variables
 initialize_session_vars()
+
+# Función para crear PDF de la conversación
+def create_pdf(messages):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    
+    # Crear estilos personalizados
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Heading1'],
+        fontSize=16,
+        alignment=TA_CENTER,
+        spaceAfter=20
+    )
+    
+    user_style = ParagraphStyle(
+        'UserStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.blue,
+        leftIndent=0,
+        spaceAfter=5
+    )
+    
+    assistant_style = ParagraphStyle(
+        'AssistantStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.darkgreen,
+        leftIndent=10,
+        spaceAfter=15
+    )
+    
+    # Crear contenido del PDF
+    content = []
+    
+    # Título
+    content.append(Paragraph("Conversación con Agente de DigitalOcean", title_style))
+    content.append(Spacer(1, 12))
+    
+    # Fecha y hora
+    from datetime import datetime
+    now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    content.append(Paragraph(f"Generado el: {now}", styles['Normal']))
+    content.append(Spacer(1, 12))
+    
+    # Añadir cada mensaje
+    for i, msg in enumerate(messages):
+        if msg["role"] == "user":
+            prefix = "👤 Usuario: "
+            style = user_style
+        else:
+            prefix = "🤖 Asistente: "
+            style = assistant_style
+        
+        content.append(Paragraph(f"{prefix}{msg['content']}", style))
+        
+        # Separador entre conversaciones completas (pregunta-respuesta)
+        if i % 2 == 1:
+            content.append(Spacer(1, 10))
+    
+    # Construir el PDF
+    doc.build(content)
+    buffer.seek(0)
+    return buffer
+
+# Función para crear audio de texto
+def text_to_speech(text, lang='es'):
+    try:
+        # Limitar la longitud del texto (gTTS tiene límites)
+        if len(text) > 5000:
+            text = text[:5000] + "... [Texto truncado debido a limitaciones]"
+            
+        # Crear objeto de texto a voz
+        tts = gTTS(text=text, lang=lang, slow=False)
+        
+        # Guardar a un buffer en memoria
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        
+        # Convertir a base64 para incrustar en HTML
+        audio_base64 = base64.b64encode(audio_buffer.read()).decode()
+        
+        return audio_base64
+    except Exception as e:
+        st.error(f"Error al generar audio: {str(e)}")
+        return None
+
+# Función para mostrar el audio player
+def display_audio_player(audio_base64):
+    audio_html = f"""
+        <audio controls autoplay="false">
+            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            Tu navegador no soporta el elemento de audio.
+        </audio>
+    """
+    return st.markdown(audio_html, unsafe_allow_html=True)
 
 # Título y descripción de la aplicación
 st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
@@ -104,6 +228,13 @@ if not st.session_state.is_configured:
         help="Incluir información de guardrails en la respuesta"
     )
     
+    # Opción para habilitar text-to-speech
+    tts_enabled = st.checkbox(
+        "Habilitar Text-to-Speech",
+        value=False,
+        help="Convertir respuestas del asistente a voz"
+    )
+    
     col1, col2 = st.columns([1, 3])
     
     with col1:
@@ -117,6 +248,7 @@ if not st.session_state.is_configured:
                 st.session_state.include_retrieval = include_retrieval
                 st.session_state.include_functions = include_functions
                 st.session_state.include_guardrails = include_guardrails
+                st.session_state.tts_enabled = tts_enabled
                 st.session_state.is_configured = True
                 st.success("¡Configuración guardada correctamente!")
                 time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
@@ -138,6 +270,7 @@ with st.sidebar.expander("Ver configuración actual"):
     st.write(f"Include retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
     st.write(f"Include functions: {'Sí' if st.session_state.include_functions else 'No'}")
     st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
+    st.write(f"Text-to-Speech: {'Habilitado' if st.session_state.tts_enabled else 'Deshabilitado'}")
     if st.button("Editar configuración"):
         st.session_state.is_configured = False
         st.rerun()
@@ -167,13 +300,38 @@ with st.sidebar.expander("Ajustes avanzados"):
         help="Incluir información de guardrails en la respuesta"
     )
     
+    # Opción para habilitar/deshabilitar TTS
+    tts_enabled = st.checkbox(
+        "Habilitar Text-to-Speech",
+        value=st.session_state.tts_enabled,
+        help="Convertir respuestas del asistente a voz"
+    )
+    
+    # Selección de idioma para TTS
+    tts_language = st.selectbox(
+        "Idioma para Text-to-Speech",
+        options=["es", "en", "fr", "de", "it", "pt"],
+        index=0,
+        format_func=lambda x: {
+            "es": "Español", 
+            "en": "Inglés", 
+            "fr": "Francés", 
+            "de": "Alemán",
+            "it": "Italiano",
+            "pt": "Portugués"
+        }.get(x, x),
+        help="Selecciona el idioma para la síntesis de voz"
+    )
+    
     # Actualizar la configuración si cambia
     if (include_retrieval != st.session_state.include_retrieval or
         include_functions != st.session_state.include_functions or
-        include_guardrails != st.session_state.include_guardrails):
+        include_guardrails != st.session_state.include_guardrails or
+        tts_enabled != st.session_state.tts_enabled):
         st.session_state.include_retrieval = include_retrieval
         st.session_state.include_functions = include_functions
         st.session_state.include_guardrails = include_guardrails
+        st.session_state.tts_enabled = tts_enabled
 
 # Función para enviar consulta al agente
 def query_agent(prompt, history=None):
@@ -323,9 +481,23 @@ with st.sidebar.expander("Probar conexión"):
                 st.error(f"Error al verificar endpoint: {str(e)}")
 
 # Mostrar historial de conversación
-for message in st.session_state.messages:
+for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        
+        # Mostrar botón de audio para respuestas del asistente si TTS está habilitado
+        if message["role"] == "assistant" and st.session_state.tts_enabled:
+            # Verificar si ya tenemos el audio para este mensaje
+            message_id = f"msg_{i}"
+            if message_id not in st.session_state.audio_responses:
+                # Generar audio para este mensaje
+                audio_data = text_to_speech(message["content"], tts_language)
+                if audio_data:
+                    st.session_state.audio_responses[message_id] = audio_data
+            
+            # Mostrar reproductor de audio si tenemos datos
+            if message_id in st.session_state.audio_responses:
+                display_audio_player(st.session_state.audio_responses[message_id])
 
 # Campo de entrada para el mensaje
 prompt = st.chat_input("Escribe tu mensaje aquí...")
@@ -362,6 +534,15 @@ if prompt:
                 response_text = response.get("response", "No se recibió respuesta del agente.")
                 st.markdown(response_text)
                 
+                # Generar y mostrar audio si TTS está habilitado
+                if st.session_state.tts_enabled:
+                    audio_data = text_to_speech(response_text, tts_language)
+                    if audio_data:
+                        display_audio_player(audio_data)
+                        # Guardar para la historia
+                        message_id = f"msg_{len(st.session_state.messages)}"
+                        st.session_state.audio_responses[message_id] = audio_data
+                
                 # Mostrar información adicional si está disponible
                 for info_type, display_name in [
                     ("retrieval", "Información de recuperación"),
@@ -378,25 +559,60 @@ if prompt:
 # Sección de opciones adicionales
 st.divider()
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🗑️ Limpiar conversación"):
         st.session_state.messages = []
+        st.session_state.audio_responses = {}
         st.experimental_rerun()
 
 with col2:
-    if st.button("💾 Guardar conversación"):
-        # Convertir historial a formato JSON
-        conversation_data = json.dumps(st.session_state.messages, indent=2)
-        
-        # Crear archivo para descargar
-        st.download_button(
-            label="Descargar JSON",
-            data=conversation_data,
-            file_name="conversacion.json",
-            mime="application/json",
-        )
+    if st.button("📄 Guardar como PDF"):
+        if len(st.session_state.messages) > 0:
+            # Generar PDF
+            pdf_buffer = create_pdf(st.session_state.messages)
+            
+            # Botón para descargar el PDF
+            st.download_button(
+                label="Descargar PDF",
+                data=pdf_buffer,
+                file_name="conversacion.pdf",
+                mime="application/pdf",
+            )
+        else:
+            st.warning("No hay mensajes para guardar.")
+
+with col3:
+    if st.button("💾 Guardar como JSON"):
+        if len(st.session_state.messages) > 0:
+            # Convertir historial a formato JSON
+            conversation_data = json.dumps(st.session_state.messages, indent=2)
+            
+            # Crear archivo para descargar
+            st.download_button(
+                label="Descargar JSON",
+                data=conversation_data,
+                file_name="conversacion.json",
+                mime="application/json",
+            )
+        else:
+            st.warning("No hay mensajes para guardar.")
+
+# Configuración de TTS en la parte inferior
+st.divider()
+tts_col1, tts_col2 = st.columns(2)
+
+with tts_col1:
+    # Mostrar estado actual de TTS
+    tts_status = "Habilitado" if st.session_state.tts_enabled else "Deshabilitado"
+    st.write(f"🔊 Text-to-Speech: {tts_status}")
+
+with tts_col2:
+    # Botón para cambiar el estado de TTS
+    if st.button("Cambiar estado de TTS"):
+        st.session_state.tts_enabled = not st.session_state.tts_enabled
+        st.experimental_rerun()
 
 # Pie de página
 st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
