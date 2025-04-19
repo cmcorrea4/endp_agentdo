@@ -83,9 +83,36 @@ def initialize_session_vars():
         st.session_state.audio_responses = {}
     if "tts_enabled" not in st.session_state:
         st.session_state.tts_enabled = False
+    if "needs_rerun" not in st.session_state:
+        st.session_state.needs_rerun = False
+    if "connection_result" not in st.session_state:
+        st.session_state.connection_result = None
+    if "clear_conversation" not in st.session_state:
+        st.session_state.clear_conversation = False
 
 # Inicializar variables
 initialize_session_vars()
+
+# Función para actualizar configuración
+def update_config():
+    st.session_state.is_configured = True
+    st.session_state.needs_rerun = True
+
+# Función para editar configuración
+def edit_config():
+    st.session_state.is_configured = False
+    st.session_state.needs_rerun = True
+
+# Función para limpiar conversación
+def clear_conversation():
+    st.session_state.messages = []
+    st.session_state.audio_responses = {}
+    st.session_state.needs_rerun = True
+
+# Función para cambiar estado TTS
+def toggle_tts():
+    st.session_state.tts_enabled = not st.session_state.tts_enabled
+    st.session_state.needs_rerun = True
 
 # Función para crear PDF de la conversación
 def create_pdf(messages):
@@ -186,6 +213,68 @@ def display_audio_player(audio_base64):
     """
     return st.markdown(audio_html, unsafe_allow_html=True)
 
+# Función para verificar la conexión con el agente
+def check_endpoint():
+    try:
+        agent_endpoint = st.session_state.agent_endpoint
+        agent_access_key = st.session_state.agent_access_key
+        
+        if not agent_endpoint or not agent_access_key:
+            return {"status": "error", "message": "Falta configuración del endpoint o clave de acceso"}
+        
+        # Asegurarse de que el endpoint termine correctamente
+        if not agent_endpoint.endswith("/"):
+            agent_endpoint += "/"
+        
+        # Verificar si la documentación está disponible (común en estos endpoints)
+        docs_url = f"{agent_endpoint}docs"
+        
+        # Preparar headers
+        headers = {
+            "Authorization": f"Bearer {agent_access_key}",
+            "Content-Type": "application/json"
+        }
+        
+        results = []
+        
+        # Primero intentar verificar si hay documentación disponible
+        try:
+            response = requests.get(docs_url, timeout=10)
+            
+            if response.status_code < 400:
+                results.append({"status": "success", "message": f"✅ Documentación del agente accesible en: {docs_url}"})
+            
+            # Luego intentar hacer una solicitud simple para verificar la conexión
+            completions_url = f"{agent_endpoint}api/v1/chat/completions"
+            test_payload = {
+                "model": "n/a",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 5,
+                "stream": False
+            }
+            
+            response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
+            
+            if response.status_code < 400:
+                results.append({"status": "success", "message": "✅ Conexión exitosa con el endpoint del agente"})
+                
+                # Obtener detalles de la respuesta para mostrar
+                try:
+                    resp_json = response.json()
+                    results.append({"status": "info", "message": "🔍 La API está configurada correctamente y responde a las solicitudes.", "details": resp_json})
+                except:
+                    results.append({"status": "info", "message": "🔍 La API está configurada correctamente y responde a las solicitudes.", "details": response.text})
+            else:
+                results.append({"status": "error", "message": f"❌ Error al conectar con el agente. Código: {response.status_code}", "details": response.text})
+                
+        except Exception as e:
+            results.append({"status": "error", "message": f"Error de conexión: {str(e)}"})
+    
+        return results
+        
+    except Exception as e:
+        return [{"status": "error", "message": f"Error al verificar endpoint: {str(e)}"}]
+
 # Título y descripción de la aplicación
 st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
 
@@ -249,10 +338,8 @@ if not st.session_state.is_configured:
                 st.session_state.include_functions = include_functions
                 st.session_state.include_guardrails = include_guardrails
                 st.session_state.tts_enabled = tts_enabled
-                st.session_state.is_configured = True
+                update_config()
                 st.success("¡Configuración guardada correctamente!")
-                time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
-                st.rerun()
     
     # Parar ejecución hasta que se configure
     st.stop()
@@ -272,8 +359,7 @@ with st.sidebar.expander("Ver configuración actual"):
     st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
     st.write(f"Text-to-Speech: {'Habilitado' if st.session_state.tts_enabled else 'Deshabilitado'}")
     if st.button("Editar configuración"):
-        st.session_state.is_configured = False
-        st.rerun()
+        edit_config()
 
 # Ajustes avanzados
 with st.sidebar.expander("Ajustes avanzados"):
@@ -332,6 +418,35 @@ with st.sidebar.expander("Ajustes avanzados"):
         st.session_state.include_functions = include_functions
         st.session_state.include_guardrails = include_guardrails
         st.session_state.tts_enabled = tts_enabled
+
+# Sección para probar conexión con el agente
+with st.sidebar.expander("Probar conexión"):
+    if st.button("Verificar endpoint"):
+        with st.spinner("Verificando conexión..."):
+            # Ejecutar verificación y guardar resultado
+            st.session_state.connection_result = check_endpoint()
+    
+    # Mostrar resultados si existen
+    if st.session_state.connection_result:
+        for result in st.session_state.connection_result:
+            if result["status"] == "success":
+                st.success(result["message"])
+            elif result["status"] == "error":
+                st.error(result["message"])
+            elif result["status"] == "info":
+                st.info(result["message"])
+                
+                # Mostrar detalles si existen (fuera del expander)
+                if "details" in result:
+                    with st.container():
+                        st.subheader("Detalles de la respuesta")
+                        try:
+                            if isinstance(result["details"], dict) or isinstance(result["details"], list):
+                                st.json(result["details"])
+                            else:
+                                st.code(result["details"])
+                        except:
+                            st.code(str(result["details"]))
 
 # Función para enviar consulta al agente
 def query_agent(prompt, history=None):
@@ -421,71 +536,12 @@ def query_agent(prompt, history=None):
     except Exception as e:
         return {"error": f"Error al comunicarse con el agente: {str(e)}"}
 
-# Sección para probar conexión con el agente
-with st.sidebar.expander("Probar conexión"):
-    if st.button("Verificar endpoint"):
-        with st.spinner("Verificando conexión..."):
-            try:
-                agent_endpoint = st.session_state.agent_endpoint
-                agent_access_key = st.session_state.agent_access_key
-                
-                if not agent_endpoint or not agent_access_key:
-                    st.error("Falta configuración del endpoint o clave de acceso")
-                else:
-                    # Asegurarse de que el endpoint termine correctamente
-                    if not agent_endpoint.endswith("/"):
-                        agent_endpoint += "/"
-                    
-                    # Verificar si la documentación está disponible (común en estos endpoints)
-                    docs_url = f"{agent_endpoint}docs"
-                    
-                    # Preparar headers
-                    headers = {
-                        "Authorization": f"Bearer {agent_access_key}",
-                        "Content-Type": "application/json"
-                    }
-                    
-                    try:
-                        # Primero intentar verificar si hay documentación disponible
-                        response = requests.get(docs_url, timeout=10)
-                        
-                        if response.status_code < 400:
-                            st.success(f"✅ Documentación del agente accesible en: {docs_url}")
-                        
-                        # Luego intentar hacer una solicitud simple para verificar la conexión
-                        completions_url = f"{agent_endpoint}api/v1/chat/completions"
-                        test_payload = {
-                            "model": "n/a",
-                            "messages": [{"role": "user", "content": "Hello"}],
-                            "max_tokens": 5,
-                            "stream": False
-                        }
-                        
-                        response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
-                        
-                        if response.status_code < 400:
-                            st.success(f"✅ Conexión exitosa con el endpoint del agente")
-                            with st.expander("Ver detalles de la respuesta"):
-                                try:
-                                    st.json(response.json())
-                                except:
-                                    st.code(response.text)
-                            st.info("🔍 La API está configurada correctamente y responde a las solicitudes.")
-                        else:
-                            st.error(f"❌ Error al conectar con el agente. Código: {response.status_code}")
-                            with st.expander("Ver detalles del error"):
-                                st.code(response.text)
-                    except Exception as e:
-                        st.error(f"Error de conexión: {str(e)}")
-            except Exception as e:
-                st.error(f"Error al verificar endpoint: {str(e)}")
-
 # Mostrar historial de conversación
 for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         
-        # Mostrar botón de audio para respuestas del asistente si TTS está habilitado
+        # Mostrar audio para respuestas del asistente si TTS está habilitado
         if message["role"] == "assistant" and st.session_state.tts_enabled:
             # Verificar si ya tenemos el audio para este mensaje
             message_id = f"msg_{i}"
@@ -534,7 +590,7 @@ if prompt:
                 response_text = response.get("response", "No se recibió respuesta del agente.")
                 st.markdown(response_text)
                 
-                # Generar y mostrar audio si TTS está habilitado
+                # Generar audio si TTS está habilitado
                 if st.session_state.tts_enabled:
                     audio_data = text_to_speech(response_text, tts_language)
                     if audio_data:
@@ -563,9 +619,7 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🗑️ Limpiar conversación"):
-        st.session_state.messages = []
-        st.session_state.audio_responses = {}
-        st.experimental_rerun()
+        clear_conversation()
 
 with col2:
     if st.button("📄 Guardar como PDF"):
@@ -611,8 +665,12 @@ with tts_col1:
 with tts_col2:
     # Botón para cambiar el estado de TTS
     if st.button("Cambiar estado de TTS"):
-        st.session_state.tts_enabled = not st.session_state.tts_enabled
-        st.experimental_rerun()
+        toggle_tts()
 
 # Pie de página
 st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
+
+# Realizar un rerun cuando sea necesario
+if st.session_state.needs_rerun:
+    st.session_state.needs_rerun = False
+    st.rerun()
