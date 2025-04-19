@@ -11,6 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.lib import colors
+import tempfile
 
 # Configuración de la página
 st.set_page_config(
@@ -48,17 +49,18 @@ st.markdown("""
         padding: 10px;
         font-size: 0.8rem;
     }
-    .audio-btn {
-        margin-top: 5px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 5px 10px;
-        cursor: pointer;
+    .stAudio {
+        margin-top: 10px;
     }
-    .audio-btn:hover {
-        background-color: #45a049;
+    .stAudio > audio {
+        width: 100%; 
+    }
+    .custom-input {
+        margin-bottom: 20px;
+    }
+    /* Hacer el cuadro de chat más grande */
+    textarea {
+        min-height: 100px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -87,6 +89,8 @@ def initialize_session_vars():
         st.session_state.needs_rerun = False
     if "connection_result" not in st.session_state:
         st.session_state.connection_result = None
+    if "user_input" not in st.session_state:
+        st.session_state.user_input = ""
 
 # Inicializar variables
 initialize_session_vars()
@@ -111,6 +115,13 @@ def clear_conversation():
 def toggle_tts():
     st.session_state.tts_enabled = not st.session_state.tts_enabled
     st.session_state.needs_rerun = True
+
+# Función para manejar el envío de mensajes
+def handle_submit():
+    if st.session_state.user_input.strip() != "":
+        st.session_state.submitted_message = st.session_state.user_input
+        st.session_state.user_input = ""
+        st.session_state.needs_rerun = True
 
 # Función para crear PDF de la conversación
 def create_pdf(messages):
@@ -181,9 +192,6 @@ def create_pdf(messages):
 # Función para crear audio de texto (versión corregida)
 def text_to_speech(text):
     try:
-        # Debug para ver lo que llega
-        st.write(f"Generando audio para un texto de {len(text)} caracteres")
-        
         # Limitar la longitud del texto (gTTS tiene límites)
         if len(text) > 5000:
             text = text[:5000] + "... [Texto truncado debido a limitaciones]"
@@ -192,7 +200,10 @@ def text_to_speech(text):
         tts = gTTS(text=text, lang='es', slow=False)
         
         # Usar un archivo temporal en lugar de BytesIO para asegurar compatibilidad
-        temp_audio_file = "temp_audio.mp3"
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
+            temp_audio_file = tmp_file.name
+            
+        # Guardar en el archivo temporal
         tts.save(temp_audio_file)
         
         # Leer el archivo como binario
@@ -279,6 +290,21 @@ if not st.session_state.is_configured:
 
 # Una vez configurado, mostrar la interfaz normal
 st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
+
+# NUEVA POSICIÓN PARA EL CAMPO DE ENTRADA DE TEXTO, ARRIBA DE LOS BOTONES
+# Campo de entrada personalizado más grande
+st.text_area(
+    "Escribe tu mensaje",
+    key="user_input",
+    value=st.session_state.user_input,
+    height=120,
+    help="Escribe aquí tu pregunta o mensaje para el agente",
+    placeholder="Escribe tu mensaje aquí..."
+)
+
+# Botón de envío
+if st.button("Enviar mensaje", key="send_button"):
+    handle_submit()
 
 # Sidebar para configuración
 st.sidebar.title("Configuración")
@@ -514,85 +540,6 @@ with st.sidebar.expander("Probar conexión"):
                     except:
                         st.code(str(result["details"]))
 
-# Mostrar historial de conversación
-for i, message in enumerate(st.session_state.messages):
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        
-        # Mostrar audio para respuestas del asistente si TTS está habilitado
-        if message["role"] == "assistant" and st.session_state.tts_enabled:
-            # Verificar si ya tenemos el audio para este mensaje
-            message_id = f"msg_{i}"
-            if message_id not in st.session_state.audio_responses:
-                # Generar audio para este mensaje
-                audio_data = text_to_speech(message["content"])
-                if audio_data:
-                    st.session_state.audio_responses[message_id] = audio_data
-            
-            # Mostrar reproductor de audio si tenemos datos
-            if message_id in st.session_state.audio_responses:
-                # Usar el método de Streamlit para mostrar audio
-                st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
-
-# Campo de entrada para el mensaje
-prompt = st.chat_input("Escribe tu mensaje aquí...")
-
-# Procesar la entrada del usuario
-if prompt:
-    # Añadir mensaje del usuario al historial
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Mostrar mensaje del usuario
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # Preparar historial para la API
-    api_history = st.session_state.messages[:-1]  # Excluir el mensaje actual
-    
-    # Mostrar indicador de carga mientras se procesa
-    with st.chat_message("assistant"):
-        with st.spinner("Pensando..."):
-            # Enviar consulta al agente
-            response = query_agent(prompt, api_history)
-            
-            if "error" in response:
-                st.error(f"Error: {response['error']}")
-                if "details" in response:
-                    with st.expander("Detalles del error"):
-                        st.code(response["details"])
-                
-                # Añadir mensaje de error al historial
-                error_msg = f"Lo siento, ocurrió un error al procesar tu solicitud: {response['error']}"
-                st.session_state.messages.append({"role": "assistant", "content": error_msg})
-            else:
-                # Mostrar respuesta del asistente
-                response_text = response.get("response", "No se recibió respuesta del agente.")
-                st.markdown(response_text)
-                
-                # Generar audio si TTS está habilitado
-                if st.session_state.tts_enabled:
-                    with st.spinner("Generando audio..."):
-                        audio_data = text_to_speech(response_text)
-                        if audio_data:
-                            # Usar el método de Streamlit para mostrar audio
-                            st.audio(audio_data, format="audio/mp3")
-                            # Guardar para la historia
-                            message_id = f"msg_{len(st.session_state.messages)}"
-                            st.session_state.audio_responses[message_id] = audio_data
-                
-                # Mostrar información adicional si está disponible
-                for info_type, display_name in [
-                    ("retrieval", "Información de recuperación"),
-                    ("functions", "Información de funciones"),
-                    ("guardrails", "Información de guardrails")
-                ]:
-                    if info_type in response:
-                        with st.expander(f"{display_name}"):
-                            st.json(response[info_type])
-                
-                # Añadir respuesta al historial
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
-
 # Sección de opciones adicionales
 st.divider()
 
@@ -647,6 +594,68 @@ with tts_col2:
     # Botón para cambiar el estado de TTS
     if st.button("Cambiar estado de TTS"):
         toggle_tts()
+
+# Mostrar historial de conversación
+st.divider()
+st.subheader("Conversación")
+
+for i, message in enumerate(st.session_state.messages):
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        
+        # Mostrar audio para respuestas del asistente si TTS está habilitado
+        if message["role"] == "assistant" and st.session_state.tts_enabled:
+            # Verificar si ya tenemos el audio para este mensaje
+            message_id = f"msg_{i}"
+            if message_id not in st.session_state.audio_responses:
+                # Generar audio para este mensaje
+                audio_data = text_to_speech(message["content"])
+                if audio_data:
+                    st.session_state.audio_responses[message_id] = audio_data
+            
+            # Mostrar reproductor de audio si tenemos datos
+            if message_id in st.session_state.audio_responses:
+                # Usar el método de Streamlit para mostrar audio con autoplay=False
+                st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
+
+# Procesar la entrada del usuario si hay un mensaje enviado
+if "submitted_message" in st.session_state and st.session_state.submitted_message:
+    prompt = st.session_state.submitted_message
+    st.session_state.submitted_message = None  # Limpiar para evitar múltiples procesamiento
+    
+    # Añadir mensaje del usuario al historial
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Mostrar mensaje del usuario (ya se actualizará al rerun)
+    
+    # Preparar historial para la API
+    api_history = st.session_state.messages[:-1]  # Excluir el mensaje actual
+    
+    # Mostrar indicador de carga mientras se procesa
+    with st.spinner("El asistente está procesando tu mensaje..."):
+        # Enviar consulta al agente
+        response = query_agent(prompt, api_history)
+        
+        if "error" in response:
+            error_msg = f"Lo siento, ocurrió un error al procesar tu solicitud: {response['error']}"
+            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        else:
+            # Obtener respuesta del asistente
+            response_text = response.get("response", "No se recibió respuesta del agente.")
+            
+            # Generar audio si TTS está habilitado
+            audio_data = None
+            if st.session_state.tts_enabled:
+                with st.spinner("Generando audio..."):
+                    audio_data = text_to_speech(response_text)
+                
+            # Añadir respuesta al historial
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            
+            # Almacenar audio si se generó
+            if audio_data:
+                message_id = f"msg_{len(st.session_state.messages) - 1}"
+                st.session_state.audio_responses[message_id] = audio_data
 
 # Pie de página
 st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
