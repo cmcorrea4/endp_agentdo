@@ -85,12 +85,10 @@ def initialize_session_vars():
         st.session_state.audio_responses = {}
     if "tts_enabled" not in st.session_state:
         st.session_state.tts_enabled = False
-    if "needs_rerun" not in st.session_state:
-        st.session_state.needs_rerun = False
     if "connection_result" not in st.session_state:
         st.session_state.connection_result = None
-    if "user_input" not in st.session_state:
-        st.session_state.user_input = ""
+    if "pending_message" not in st.session_state:
+        st.session_state.pending_message = None
 
 # Inicializar variables
 initialize_session_vars()
@@ -98,30 +96,25 @@ initialize_session_vars()
 # Función para actualizar configuración
 def update_config():
     st.session_state.is_configured = True
-    st.session_state.needs_rerun = True
 
 # Función para editar configuración
 def edit_config():
     st.session_state.is_configured = False
-    st.session_state.needs_rerun = True
 
 # Función para limpiar conversación
 def clear_conversation():
     st.session_state.messages = []
     st.session_state.audio_responses = {}
-    st.session_state.needs_rerun = True
 
 # Función para cambiar estado TTS
 def toggle_tts():
     st.session_state.tts_enabled = not st.session_state.tts_enabled
-    st.session_state.needs_rerun = True
 
-# Función para manejar el envío de mensajes
-def handle_submit():
-    if st.session_state.user_input.strip() != "":
-        st.session_state.submitted_message = st.session_state.user_input
-        st.session_state.user_input = ""
-        st.session_state.needs_rerun = True
+# Función para manejar envío de mensaje
+def send_message():
+    user_input = st.session_state.user_input
+    if user_input and user_input.strip():
+        st.session_state.pending_message = user_input
 
 # Función para crear PDF de la conversación
 def create_pdf(messages):
@@ -189,7 +182,7 @@ def create_pdf(messages):
     buffer.seek(0)
     return buffer
 
-# Función para crear audio de texto (versión corregida)
+# Función para crear audio de texto
 def text_to_speech(text):
     try:
         # Limitar la longitud del texto (gTTS tiene límites)
@@ -218,149 +211,6 @@ def text_to_speech(text):
     except Exception as e:
         st.error(f"Error al generar audio: {str(e)}")
         return None
-
-# Título y descripción de la aplicación
-st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
-
-# Pantalla de configuración inicial si aún no se ha configurado
-if not st.session_state.is_configured:
-    st.markdown("<h2 class='subheader'>Configuración Inicial</h2>", unsafe_allow_html=True)
-    
-    st.info("Por favor, configura los parámetros para conectar con tu agente de DigitalOcean.")
-    
-    # Campos para la configuración
-    agent_endpoint = st.text_input(
-        "Endpoint del Agente", 
-        placeholder="https://tu-agente-identifier.ondigitalocean.app",
-        help="URL completa del endpoint del agente (sin '/api/v1/')"
-    )
-    
-    agent_access_key = st.text_input(
-        "Clave de Acceso", 
-        type="password",
-        placeholder="Ingresa tu clave de acceso al agente",
-        help="Tu clave de acceso para autenticar las solicitudes"
-    )
-    
-    # Opciones adicionales
-    include_retrieval = st.checkbox(
-        "Incluir información de recuperación",
-        value=False,
-        help="Incluir información de recuperación en la respuesta"
-    )
-    
-    include_functions = st.checkbox(
-        "Incluir información de funciones",
-        value=False,
-        help="Incluir información de funciones en la respuesta"
-    )
-    
-    include_guardrails = st.checkbox(
-        "Incluir información de guardrails",
-        value=False,
-        help="Incluir información de guardrails en la respuesta"
-    )
-    
-    # Opción para habilitar text-to-speech
-    tts_enabled = st.checkbox(
-        "Habilitar Text-to-Speech",
-        value=False,
-        help="Convertir respuestas del asistente a voz"
-    )
-    
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        if st.button("Guardar configuración"):
-            if not agent_endpoint or not agent_access_key:
-                st.error("Por favor, ingresa tanto el endpoint como la clave de acceso")
-            else:
-                # Guardar configuración en session_state
-                st.session_state.agent_endpoint = agent_endpoint
-                st.session_state.agent_access_key = agent_access_key
-                st.session_state.include_retrieval = include_retrieval
-                st.session_state.include_functions = include_functions
-                st.session_state.include_guardrails = include_guardrails
-                st.session_state.tts_enabled = tts_enabled
-                update_config()
-                st.success("¡Configuración guardada correctamente!")
-    
-    # Parar ejecución hasta que se configure
-    st.stop()
-
-# Una vez configurado, mostrar la interfaz normal
-st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
-
-# NUEVA POSICIÓN PARA EL CAMPO DE ENTRADA DE TEXTO, ARRIBA DE LOS BOTONES
-# Campo de entrada personalizado más grande
-st.text_area(
-    "Escribe tu mensaje",
-    key="user_input",
-    value=st.session_state.user_input,
-    height=120,
-    help="Escribe aquí tu pregunta o mensaje para el agente",
-    placeholder="Escribe tu mensaje aquí..."
-)
-
-# Botón de envío
-if st.button("Enviar mensaje", key="send_button"):
-    handle_submit()
-
-# Sidebar para configuración
-st.sidebar.title("Configuración")
-
-# Mostrar información de conexión actual
-st.sidebar.success("✅ Configuración cargada")
-with st.sidebar.expander("Ver configuración actual"):
-    st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
-    st.write(f"Include retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
-    st.write(f"Include functions: {'Sí' if st.session_state.include_functions else 'No'}")
-    st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
-    st.write(f"Text-to-Speech: {'Habilitado' if st.session_state.tts_enabled else 'Deshabilitado'}")
-    if st.button("Editar configuración"):
-        edit_config()
-
-# Ajustes avanzados
-with st.sidebar.expander("Ajustes avanzados"):
-    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
-                          help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
-    
-    max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
-                          help="Número máximo de tokens en la respuesta.")
-    
-    # Opciones para incluir información adicional
-    include_retrieval = st.checkbox(
-        "Incluir información de recuperación",
-        value=st.session_state.include_retrieval,
-        help="Incluir información de recuperación en la respuesta"
-    )
-    include_functions = st.checkbox(
-        "Incluir información de funciones",
-        value=st.session_state.include_functions,
-        help="Incluir información de funciones en la respuesta"
-    )
-    include_guardrails = st.checkbox(
-        "Incluir información de guardrails",
-        value=st.session_state.include_guardrails,
-        help="Incluir información de guardrails en la respuesta"
-    )
-    
-    # Opción para habilitar/deshabilitar TTS
-    tts_enabled = st.checkbox(
-        "Habilitar Text-to-Speech",
-        value=st.session_state.tts_enabled,
-        help="Convertir respuestas del asistente a voz"
-    )
-    
-    # Actualizar la configuración si cambia
-    if (include_retrieval != st.session_state.include_retrieval or
-        include_functions != st.session_state.include_functions or
-        include_guardrails != st.session_state.include_guardrails or
-        tts_enabled != st.session_state.tts_enabled):
-        st.session_state.include_retrieval = include_retrieval
-        st.session_state.include_functions = include_functions
-        st.session_state.include_guardrails = include_guardrails
-        st.session_state.tts_enabled = tts_enabled
 
 # Función para enviar consulta al agente
 def query_agent(prompt, history=None):
@@ -512,12 +362,156 @@ def check_endpoint():
     except Exception as e:
         return [{"status": "error", "message": f"Error al verificar endpoint: {str(e)}"}]
 
+# Título y descripción de la aplicación
+st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
+
+# Pantalla de configuración inicial si aún no se ha configurado
+if not st.session_state.is_configured:
+    st.markdown("<h2 class='subheader'>Configuración Inicial</h2>", unsafe_allow_html=True)
+    
+    st.info("Por favor, configura los parámetros para conectar con tu agente de DigitalOcean.")
+    
+    # Campos para la configuración
+    agent_endpoint = st.text_input(
+        "Endpoint del Agente", 
+        placeholder="https://tu-agente-identifier.ondigitalocean.app",
+        help="URL completa del endpoint del agente (sin '/api/v1/')"
+    )
+    
+    agent_access_key = st.text_input(
+        "Clave de Acceso", 
+        type="password",
+        placeholder="Ingresa tu clave de acceso al agente",
+        help="Tu clave de acceso para autenticar las solicitudes"
+    )
+    
+    # Opciones adicionales
+    include_retrieval = st.checkbox(
+        "Incluir información de recuperación",
+        value=False,
+        help="Incluir información de recuperación en la respuesta"
+    )
+    
+    include_functions = st.checkbox(
+        "Incluir información de funciones",
+        value=False,
+        help="Incluir información de funciones en la respuesta"
+    )
+    
+    include_guardrails = st.checkbox(
+        "Incluir información de guardrails",
+        value=False,
+        help="Incluir información de guardrails en la respuesta"
+    )
+    
+    # Opción para habilitar text-to-speech
+    tts_enabled = st.checkbox(
+        "Habilitar Text-to-Speech",
+        value=False,
+        help="Convertir respuestas del asistente a voz"
+    )
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        if st.button("Guardar configuración"):
+            if not agent_endpoint or not agent_access_key:
+                st.error("Por favor, ingresa tanto el endpoint como la clave de acceso")
+            else:
+                # Guardar configuración en session_state
+                st.session_state.agent_endpoint = agent_endpoint
+                st.session_state.agent_access_key = agent_access_key
+                st.session_state.include_retrieval = include_retrieval
+                st.session_state.include_functions = include_functions
+                st.session_state.include_guardrails = include_guardrails
+                st.session_state.tts_enabled = tts_enabled
+                update_config()
+                st.success("¡Configuración guardada correctamente!")
+                st.rerun()
+    
+    # Parar ejecución hasta que se configure
+    st.stop()
+
+# Una vez configurado, mostrar la interfaz normal
+st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
+
+# NUEVA POSICIÓN PARA EL CAMPO DE ENTRADA DE TEXTO, ARRIBA DE LOS BOTONES
+with st.form(key="message_form"):
+    user_input = st.text_area(
+        "Escribe tu mensaje",
+        key="user_input",
+        height=120,
+        help="Escribe aquí tu pregunta o mensaje para el agente",
+        placeholder="Escribe tu mensaje aquí..."
+    )
+    submit_button = st.form_submit_button("Enviar mensaje")
+    if submit_button and user_input.strip():
+        st.session_state.pending_message = user_input
+
+# Sidebar para configuración
+st.sidebar.title("Configuración")
+
+# Mostrar información de conexión actual
+st.sidebar.success("✅ Configuración cargada")
+with st.sidebar.expander("Ver configuración actual"):
+    st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
+    st.write(f"Include retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
+    st.write(f"Include functions: {'Sí' if st.session_state.include_functions else 'No'}")
+    st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
+    st.write(f"Text-to-Speech: {'Habilitado' if st.session_state.tts_enabled else 'Deshabilitado'}")
+    if st.button("Editar configuración"):
+        edit_config()
+        st.rerun()
+
+# Ajustes avanzados
+with st.sidebar.expander("Ajustes avanzados"):
+    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
+                          help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
+    
+    max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
+                          help="Número máximo de tokens en la respuesta.")
+    
+    # Opciones para incluir información adicional
+    include_retrieval = st.checkbox(
+        "Incluir información de recuperación",
+        value=st.session_state.include_retrieval,
+        help="Incluir información de recuperación en la respuesta"
+    )
+    include_functions = st.checkbox(
+        "Incluir información de funciones",
+        value=st.session_state.include_functions,
+        help="Incluir información de funciones en la respuesta"
+    )
+    include_guardrails = st.checkbox(
+        "Incluir información de guardrails",
+        value=st.session_state.include_guardrails,
+        help="Incluir información de guardrails en la respuesta"
+    )
+    
+    # Opción para habilitar/deshabilitar TTS
+    tts_enabled = st.checkbox(
+        "Habilitar Text-to-Speech",
+        value=st.session_state.tts_enabled,
+        help="Convertir respuestas del asistente a voz"
+    )
+    
+    # Actualizar la configuración si cambia
+    if (include_retrieval != st.session_state.include_retrieval or
+        include_functions != st.session_state.include_functions or
+        include_guardrails != st.session_state.include_guardrails or
+        tts_enabled != st.session_state.tts_enabled):
+        st.session_state.include_retrieval = include_retrieval
+        st.session_state.include_functions = include_functions
+        st.session_state.include_guardrails = include_guardrails
+        st.session_state.tts_enabled = tts_enabled
+
 # Sección para probar conexión con el agente
 with st.sidebar.expander("Probar conexión"):
     if st.button("Verificar endpoint"):
         with st.spinner("Verificando conexión..."):
             # Ejecutar verificación y guardar resultado
             st.session_state.connection_result = check_endpoint()
+            st.rerun()
     
     # Mostrar resultados si existen
     if st.session_state.connection_result:
@@ -548,38 +542,37 @@ col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("🗑️ Limpiar conversación"):
         clear_conversation()
+        st.rerun()
 
 with col2:
-    if st.button("📄 Guardar como PDF"):
-        if len(st.session_state.messages) > 0:
-            # Generar PDF
-            pdf_buffer = create_pdf(st.session_state.messages)
-            
-            # Botón para descargar el PDF
-            st.download_button(
-                label="Descargar PDF",
-                data=pdf_buffer,
-                file_name="conversacion.pdf",
-                mime="application/pdf",
-            )
-        else:
-            st.warning("No hay mensajes para guardar.")
+    if len(st.session_state.messages) > 0:
+        # Generar PDF
+        pdf_buffer = create_pdf(st.session_state.messages)
+        
+        # Botón para descargar el PDF
+        st.download_button(
+            label="📄 Guardar como PDF",
+            data=pdf_buffer,
+            file_name="conversacion.pdf",
+            mime="application/pdf",
+        )
+    else:
+        st.button("📄 Guardar como PDF", disabled=True)
 
 with col3:
-    if st.button("💾 Guardar como JSON"):
-        if len(st.session_state.messages) > 0:
-            # Convertir historial a formato JSON
-            conversation_data = json.dumps(st.session_state.messages, indent=2)
-            
-            # Crear archivo para descargar
-            st.download_button(
-                label="Descargar JSON",
-                data=conversation_data,
-                file_name="conversacion.json",
-                mime="application/json",
-            )
-        else:
-            st.warning("No hay mensajes para guardar.")
+    if len(st.session_state.messages) > 0:
+        # Convertir historial a formato JSON
+        conversation_data = json.dumps(st.session_state.messages, indent=2)
+        
+        # Crear archivo para descargar
+        st.download_button(
+            label="💾 Guardar como JSON",
+            data=conversation_data,
+            file_name="conversacion.json",
+            mime="application/json",
+        )
+    else:
+        st.button("💾 Guardar como JSON", disabled=True)
 
 # Configuración de TTS en la parte inferior
 st.divider()
@@ -594,6 +587,7 @@ with tts_col2:
     # Botón para cambiar el estado de TTS
     if st.button("Cambiar estado de TTS"):
         toggle_tts()
+        st.rerun()
 
 # Mostrar historial de conversación
 st.divider()
@@ -618,15 +612,13 @@ for i, message in enumerate(st.session_state.messages):
                 # Usar el método de Streamlit para mostrar audio con autoplay=False
                 st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
 
-# Procesar la entrada del usuario si hay un mensaje enviado
-if "submitted_message" in st.session_state and st.session_state.submitted_message:
-    prompt = st.session_state.submitted_message
-    st.session_state.submitted_message = None  # Limpiar para evitar múltiples procesamiento
+# Procesar la entrada del usuario si hay un mensaje pendiente
+if st.session_state.pending_message:
+    prompt = st.session_state.pending_message
+    st.session_state.pending_message = None  # Limpiar para evitar múltiples procesamientos
     
     # Añadir mensaje del usuario al historial
     st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Mostrar mensaje del usuario (ya se actualizará al rerun)
     
     # Preparar historial para la API
     api_history = st.session_state.messages[:-1]  # Excluir el mensaje actual
@@ -656,11 +648,9 @@ if "submitted_message" in st.session_state and st.session_state.submitted_messag
             if audio_data:
                 message_id = f"msg_{len(st.session_state.messages) - 1}"
                 st.session_state.audio_responses[message_id] = audio_data
+    
+    # Actualizar la interfaz para mostrar los nuevos mensajes
+    st.rerun()
 
 # Pie de página
 st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
-
-# Realizar un rerun cuando sea necesario
-if st.session_state.needs_rerun:
-    st.session_state.needs_rerun = False
-    st.rerun()
