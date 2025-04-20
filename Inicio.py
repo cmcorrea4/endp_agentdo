@@ -475,7 +475,7 @@ with st.sidebar.expander("Ver configuración actual"):
 
 # Ajustes avanzados
 with st.sidebar.expander("Ajustes avanzados"):
-    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
+    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.2, step=0.1,
                           help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
     
     max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
