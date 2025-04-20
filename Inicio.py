@@ -27,12 +27,12 @@ st.markdown("""
         font-size: 2.5rem;
         color: #1E88E5;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     .subheader {
-        font-size: 1.5rem;
+        font-size: 1.2rem;
         color: #424242;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     .response-container {
         background-color: #f0f2f6;
@@ -68,6 +68,28 @@ st.markdown("""
     /* Dar más espacio a la conversación */
     section.main > div {
         padding-bottom: 5rem;
+    }
+    /* Eliminar espacios extra */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 0rem !important;
+        margin-top: 0rem !important;
+    }
+    .main .block-container {
+        padding: 1rem 1rem 3rem 1rem !important;
+        max-width: 100% !important;
+    }
+    /* Ajustar contenedor principal */
+    .css-1d391kg, .css-1knacbx {
+        padding-top: 0 !important;
+    }
+    /* Espacio para los mensajes */
+    [data-testid="stVerticalBlock"] {
+        gap: 0 !important;
+    }
+    div.element-container {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -574,30 +596,32 @@ with save_col2:
     else:
         st.button("💾 Guardar como JSON", disabled=True)
 
-# Mostrar historial de conversación
-# Antes de mostrar la conversación, asegúrate de que hay espacio suficiente
-st.markdown("<div style='min-height: 400px;'></div>", unsafe_allow_html=True)
+# Mostrar historial de conversación - ELIMINADO EL ESPACIO EXTRA
+# Contenedor para la conversación con altura ajustada
+chat_container = st.container()
 
-for i, message in enumerate(st.session_state.messages):
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        
-        # Mostrar audio para respuestas del asistente si TTS está habilitado
-        if message["role"] == "assistant" and st.session_state.tts_enabled:
-            # Verificar si ya tenemos el audio para este mensaje
-            message_id = f"msg_{i}"
-            if message_id not in st.session_state.audio_responses:
-                # Generar audio para este mensaje
-                audio_data = text_to_speech(message["content"])
-                if audio_data:
-                    st.session_state.audio_responses[message_id] = audio_data
+with chat_container:
+    # Mostrar mensajes existentes
+    for i, message in enumerate(st.session_state.messages):
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
             
-            # Mostrar reproductor de audio si tenemos datos
-            if message_id in st.session_state.audio_responses:
-                # Usar el método de Streamlit para mostrar audio con autoplay=False
-                st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
+            # Mostrar audio para respuestas del asistente si TTS está habilitado
+            if message["role"] == "assistant" and st.session_state.tts_enabled:
+                # Verificar si ya tenemos el audio para este mensaje
+                message_id = f"msg_{i}"
+                if message_id not in st.session_state.audio_responses:
+                    # Generar audio para este mensaje
+                    audio_data = text_to_speech(message["content"])
+                    if audio_data:
+                        st.session_state.audio_responses[message_id] = audio_data
+                
+                # Mostrar reproductor de audio si tenemos datos
+                if message_id in st.session_state.audio_responses:
+                    # Usar el método de Streamlit para mostrar audio con autoplay=False
+                    st.audio(st.session_state.audio_responses[message_id], format="audio/mp3")
 
-# Campo de entrada de chat
+# Campo de entrada de chat - COLOCADO DIRECTAMENTE DEBAJO DE LOS MENSAJES
 prompt = st.chat_input("Escribe tu mensaje aquí...")
 if prompt:
     st.session_state.pending_message = prompt
@@ -642,6 +666,3 @@ if st.session_state.pending_message:
     
     # Actualizar la interfaz para mostrar los nuevos mensajes
     st.rerun()
-
-# Pie de página
-st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
