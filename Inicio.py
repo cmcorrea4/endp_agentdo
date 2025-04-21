@@ -1,405 +1,402 @@
 import streamlit as st
-import streamlit.components.v1 as components
-from streamlit_option_menu import option_menu
-import base64
+import requests
+import json
+import time
 
-def main():
-    # Configuración de la página
-    st.set_page_config(
-        page_title="Asistentes Digitales SUME",
-        page_icon="⚡",
-        layout="wide",
-        initial_sidebar_state="collapsed"
-    )
-    
-    # Aplicar CSS personalizado para mejorar la apariencia
-    st.markdown("""
-    <style>
-    /* Colores corporativos */
-    :root {
-        --primary: #EB6600;
-        --secondary: #031B4E;
-        --background: #ffffff;
-        --text: #333333;
+# Configuración de la página
+st.set_page_config(
+    page_title="Agente DigitalOcean",
+    page_icon="🤖",
+    layout="wide"
+)
+
+# Estilos CSS personalizados
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        color: #1E88E5;
+        text-align: center;
+        margin-bottom: 2rem;
     }
-    
-    /* Reducción de espacios innecesarios */
-    .stApp {
-        background-color: var(--background);
-        padding: 0;
-        margin: 0;
-    }
-    
-    /* Eliminar espacios entre elementos */
-    .main .block-container {
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-        max-width: 95%;
-    }
-    
-    .st-emotion-cache-16txtl3 {
-        padding: 0.5rem 0.5rem 0.5rem;
-    }
-    
-    /* Reducir espacio vertical entre componentes */
-    .element-container, [data-testid="stVerticalBlock"] {
-        gap: 0px !important;
-        margin-bottom: 5px !important;
-    }
-    
-    h1, h2, h3 {
-        color: var(--secondary);
-        font-family: 'Segoe UI', sans-serif;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Tarjetas para cada asistente */
-    .assistant-card {
-        background-color: white;
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 10px;
-        border-left: 5px solid var(--primary);
-    }
-    
-    /* Iconos grandes */
-    .icon-large {
-        font-size: 2rem;
-        color: var(--primary);
-        margin-right: 10px;
-    }
-    
-    /* Separador con gradiente */
-    .gradient-divider {
-        height: 3px;
-        background: linear-gradient(90deg, #EB6600, #031B4E);
-        margin: 10px 0;
-        border-radius: 3px;
-    }
-    
-    /* Ajustar altura del chatbot */
-    .chatbot-container {
-        height: 500px;
-        margin-top: 0;
-        padding: 0;
-    }
-    
-    /* Ocultar el encabezado "streamlit" por defecto */
-    #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    /* Ajuste para el logo y título */
-    .header-container {
-        display: flex;
-        align-items: center;
-        padding: 0.5rem 0;
+    .subheader {
+        font-size: 1.5rem;
+        color: #424242;
         margin-bottom: 1rem;
     }
-    
-    .header-title {
-        color: #031B4E;
-        margin-left: 15px;
-        font-size: 1.8rem;
+    .response-container {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
     }
-    
-    /* Ajustes para el menú */
-    .stHorizontalBlock {
-        gap: 0 !important;
+    .footer {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        background-color: #f0f2f6;
+        text-align: center;
+        padding: 10px;
+        font-size: 0.8rem;
     }
+</style>
+""", unsafe_allow_html=True)
+
+# Función para inicializar variables de sesión
+def initialize_session_vars():
+    if "is_configured" not in st.session_state:
+        st.session_state.is_configured = False
+    if "agent_endpoint" not in st.session_state:
+        st.session_state.agent_endpoint = ""
+    if "agent_access_key" not in st.session_state:
+        st.session_state.agent_access_key = ""
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "include_retrieval" not in st.session_state:
+        st.session_state.include_retrieval = False
+    if "include_functions" not in st.session_state:
+        st.session_state.include_functions = False
+    if "include_guardrails" not in st.session_state:
+        st.session_state.include_guardrails = False
+
+# Inicializar variables
+initialize_session_vars()
+
+# Título y descripción de la aplicación
+st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
+
+# Pantalla de configuración inicial si aún no se ha configurado
+if not st.session_state.is_configured:
+    st.markdown("<h2 class='subheader'>Configuración Inicial</h2>", unsafe_allow_html=True)
     
-    /* Eliminar margen superior del primer elemento */
-    .main > .block-container > div:first-child {
-        margin-top: 0 !important;
-    }
+    st.info("Por favor, configura los parámetros para conectar con tu agente de DigitalOcean.")
     
-    /* Corregir el espacio entre tarjetas y elementos */
-    p {
-        margin-bottom: 0.5rem;
-    }
-    
-    ul {
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Header con logo y título
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        st.image("logo_sume2.png", width=100)
-    with col2:
-        st.markdown("<h1 class='header-title'>Asistentes Digitales SUME</h1>", unsafe_allow_html=True)
-    
-    # Navegación con iconos
-    selected = option_menu(
-        menu_title=None,
-        options=["Inicio", "Asistente de Voz", "Asistente de Energía", "Asistente Textil", "Acerca de"],
-        icons=["house", "mic", "lightning-charge", "layers", "info-circle"],
-        menu_icon="cast",
-        default_index=0,
-        orientation="horizontal",
-        styles={
-            "container": {"padding": "0!important", "background-color": "#f8f9fa"},
-            "icon": {"color": "#EB6600", "font-size": "18px"},
-            "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee", "padding": "10px"},
-            "nav-link-selected": {"background-color": "#EB6600", "color": "white"},
-        }
+    # Campos para la configuración
+    agent_endpoint = st.text_input(
+        "Endpoint del Agente", 
+        placeholder="https://tu-agente-identifier.ondigitalocean.app",
+        help="URL completa del endpoint del agente (sin '/api/v1/')"
     )
     
-    # Página de inicio
-    if selected == "Inicio":
-        col1, col2 = st.columns([3, 1])
+    agent_access_key = st.text_input(
+        "Clave de Acceso", 
+        type="password",
+        placeholder="Ingresa tu clave de acceso al agente",
+        help="Tu clave de acceso para autenticar las solicitudes"
+    )
+    
+    # Opciones adicionales
+    include_retrieval = st.checkbox(
+        "Incluir información de recuperación",
+        value=False,
+        help="Incluir información de recuperación en la respuesta"
+    )
+    
+    include_functions = st.checkbox(
+        "Incluir información de funciones",
+        value=False,
+        help="Incluir información de funciones en la respuesta"
+    )
+    
+    include_guardrails = st.checkbox(
+        "Incluir información de guardrails",
+        value=False,
+        help="Incluir información de guardrails en la respuesta"
+    )
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        if st.button("Guardar configuración"):
+            if not agent_endpoint or not agent_access_key:
+                st.error("Por favor, ingresa tanto el endpoint como la clave de acceso")
+            else:
+                # Guardar configuración en session_state
+                st.session_state.agent_endpoint = agent_endpoint
+                st.session_state.agent_access_key = agent_access_key
+                st.session_state.include_retrieval = include_retrieval
+                st.session_state.include_functions = include_functions
+                st.session_state.include_guardrails = include_guardrails
+                st.session_state.is_configured = True
+                st.success("¡Configuración guardada correctamente!")
+                time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
+                st.rerun()
+    
+    # Parar ejecución hasta que se configure
+    st.stop()
+
+# Una vez configurado, mostrar la interfaz normal
+st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
+
+# Sidebar para configuración
+st.sidebar.title("Configuración")
+
+# Mostrar información de conexión actual
+st.sidebar.success("✅ Configuración cargada")
+with st.sidebar.expander("Ver configuración actual"):
+    st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
+    st.write(f"Include retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
+    st.write(f"Include functions: {'Sí' if st.session_state.include_functions else 'No'}")
+    st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
+    if st.button("Editar configuración"):
+        st.session_state.is_configured = False
+        st.rerun()
+
+# Ajustes avanzados
+with st.sidebar.expander("Ajustes avanzados"):
+    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
+                          help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
+    
+    max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
+                          help="Número máximo de tokens en la respuesta.")
+    
+    # Opciones para incluir información adicional
+    include_retrieval = st.checkbox(
+        "Incluir información de recuperación",
+        value=st.session_state.include_retrieval,
+        help="Incluir información de recuperación en la respuesta"
+    )
+    include_functions = st.checkbox(
+        "Incluir información de funciones",
+        value=st.session_state.include_functions,
+        help="Incluir información de funciones en la respuesta"
+    )
+    include_guardrails = st.checkbox(
+        "Incluir información de guardrails",
+        value=st.session_state.include_guardrails,
+        help="Incluir información de guardrails en la respuesta"
+    )
+    
+    # Actualizar la configuración si cambia
+    if (include_retrieval != st.session_state.include_retrieval or
+        include_functions != st.session_state.include_functions or
+        include_guardrails != st.session_state.include_guardrails):
+        st.session_state.include_retrieval = include_retrieval
+        st.session_state.include_functions = include_functions
+        st.session_state.include_guardrails = include_guardrails
+
+# Función para enviar consulta al agente
+def query_agent(prompt, history=None):
+    try:
+        # Obtener configuración del agente
+        agent_endpoint = st.session_state.agent_endpoint
+        agent_access_key = st.session_state.agent_access_key
+        include_retrieval = st.session_state.include_retrieval
+        include_functions = st.session_state.include_functions
+        include_guardrails = st.session_state.include_guardrails
         
-        with col1:
-            st.markdown("""
-            <div class="assistant-card">
-                <h2>Bienvenido a los Asistentes Digitales SUME</h2>
-                <p>Nuestros asistentes digitales están diseñados para facilitar su interacción con los servicios de SUME Energy. 
-                Elija el tipo de asistente que necesita utilizando la barra de navegación superior.</p>
+        if not agent_endpoint or not agent_access_key:
+            return {"error": "Las credenciales de API no están configuradas correctamente."}
+        
+        # Asegurarse de que el endpoint termine correctamente
+        if not agent_endpoint.endswith("/"):
+            agent_endpoint += "/"
+        
+        # Construir URL para chat completions
+        completions_url = f"{agent_endpoint}api/v1/chat/completions"
+        
+        # Preparar headers con autenticación
+        headers = {
+            "Authorization": f"Bearer {agent_access_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Preparar los mensajes en formato OpenAI
+        messages = []
+        if history:
+            messages.extend([{"role": msg["role"], "content": msg["content"]} for msg in history])
+        messages.append({"role": "user", "content": prompt})
+        
+        # Construir el payload
+        payload = {
+            "model": "n/a",  # El modelo no es relevante para el agente
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+            "include_retrieval_info": include_retrieval,
+            "include_functions_info": include_functions,
+            "include_guardrails_info": include_guardrails
+        }
+        
+        # Enviar solicitud POST
+        try:
+            response = requests.post(completions_url, headers=headers, json=payload, timeout=60)
+            
+            # Verificar respuesta
+            if response.status_code == 200:
+                try:
+                    response_data = response.json()
+                    
+                    # Procesar la respuesta en formato OpenAI
+                    if "choices" in response_data and len(response_data["choices"]) > 0:
+                        choice = response_data["choices"][0]
+                        if "message" in choice and "content" in choice["message"]:
+                            result = {
+                                "response": choice["message"]["content"]
+                            }
+                            
+                            # Añadir información adicional si está disponible
+                            for info_type in ["retrieval", "functions", "guardrails"]:
+                                if info_type in response_data:
+                                    result[info_type] = response_data[info_type]
+                            
+                            return result
+                    
+                    # Si no se encuentra la estructura esperada
+                    return {"error": "Formato de respuesta inesperado", "details": str(response_data)}
+                except ValueError:
+                    # Si no es JSON, devolver el texto plano
+                    return {"response": response.text}
+            else:
+                # Error en la respuesta
+                error_message = f"Error en la solicitud. Código: {response.status_code}"
+                try:
+                    error_details = response.json()
+                    return {"error": error_message, "details": str(error_details)}
+                except:
+                    return {"error": error_message, "details": response.text}
                 
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para el divisor y la lista
-            st.markdown('<hr style="height: 3px; background: linear-gradient(90deg, #EB6600, #031B4E); margin: 10px 0; border: none;">', unsafe_allow_html=True)
-            
-            st.markdown("<h3>Nuestros Asistentes:</h3>", unsafe_allow_html=True)
-            
-            # Usar listas nativas de Streamlit para evitar problemas de renderizado
-            st.markdown("• **Asistente de Voz** - Interactúe mediante comandos de voz")
-            st.markdown("• **Asistente de Energía** - Consulte información sobre consumo y eficiencia energética")
-            st.markdown("• **Asistente Textil** - Obtenga asistencia relacionada con nuestros productos textiles")
+        except requests.exceptions.RequestException as e:
+            return {"error": f"Error en la solicitud HTTP: {str(e)}"}
         
-        with col2:
-            st.image("logo_sume2.png", width=150)
-    
-    # Asistente de Voz
-    elif selected == "Asistente de Voz":
-        # Encabezado del asistente
-        st.markdown("""
-        <div class="assistant-card">
-            <div style="display: flex; align-items: center;">
-                <i class="material-icons icon-large">mic</i>
-                <h2 style="margin-left: 10px; margin-bottom: 0;">Asistente de Voz</h2>
-            </div>
-            <p>Interactúa a través de la voz con nuestro asistente inteligente.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Añadir columnas para estructurar mejor el contenido
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Widget de voz con Elevenlabs (altura reducida)
-            html_voice = """
-            <div style="background-color: #f8f8f8; border-radius: 10px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 0;">
-                <div style="height: 450px;">
-                    <elevenlabs-convai agent-id="gMh8bGtmxS5OxxPwDuKT"></elevenlabs-convai>
-                    <script src="https://elevenlabs.io/convai-widget/index.js" async></script>
-                </div>
-            </div>
-            """
-            st.markdown('<div style="margin-top: -10px;">', unsafe_allow_html=True)
-            components.html(html_voice, height=450, scrolling=False)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        with col2:
-            # Información descriptiva del asistente de voz - usando método nativo de Streamlit para evitar HTML visible
-            st.markdown("""
-            <div style="background-color: #f8f8f8; border-radius: 10px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 0; border-left: 3px solid #EB6600;">
-                <h4 style="color: #031B4E; margin-top: 0; margin-bottom: 20px; font-size: 18px;">Características</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para las listas con más espacio
-            st.markdown("<div style='margin-bottom: 12px;'>• Interacción por comandos de voz</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Reconocimiento de lenguaje natural</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Respuestas claras y conversacionales</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Compatible con diferentes acentos</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Navegación manos libres por servicios</div>", unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background-color: #f8f8f8; padding-left: 15px; padding-bottom: 5px; margin-top: 25px;">
-                <h4 style="color: #031B4E; margin-top: 15px; margin-bottom: 20px; font-size: 18px;">¿Qué puedes preguntar?</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para las preguntas con más espacio
-            st.markdown("<div style='margin-bottom: 12px;'>• \"¿Qué servicios ofrece SUME Energy?\"</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• \"Necesito información sobre productos\"</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• \"¿Cómo puedo contactar a un asesor?\"</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• \"Cuéntame sobre las soluciones energéticas\"</div>", unsafe_allow_html=True)
-    
-    # Asistente de Energía
-    elif selected == "Asistente de Energía":
-        # Encabezado del asistente
-        st.markdown("""
-        <div class="assistant-card">
-            <div style="display: flex; align-items: center;">
-                <i class="material-icons icon-large">bolt</i>
-                <h2 style="margin-left: 10px; margin-bottom: 0;">Asistente de Energía</h2>
-            </div>
-            <p>Consulta información sobre consumo energético, eficiencia y recomendaciones personalizadas.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Añadir columnas para estructurar mejor el contenido
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Widget de chatbot de energía (altura reducida)
-            html_energy = """
-            <div style="background-color: #f8f8f8; border-radius: 10px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 0;">
-                <div style="height: 450px;">
-                    <script async
-                      src="https://agent-3f4373bb9b9e2521b014-cd9qj.ondigitalocean.app/static/chatbot/widget.js"
-                      data-agent-id="de703369-fcf2-11ef-bf8f-4e013e2ddde4"
-                      data-chatbot-id="M1iBgnKnoSo7U1LS4gvPlJbUb5VWTaWG"
-                      data-name="Electra - Asistente de Energía"
-                      data-primary-color="#EB6600"
-                      data-secondary-color="#E5E8ED"
-                      data-button-background-color="#EB6600"
-                      data-starting-message="Hola soy Electra, la asistente Digital de SUME EnergyC, ¿en qué puedo ayudarte?"
-                      data-logo="/static/chatbot/icons/default-agent.svg">
-                    </script>
-                </div>
-            </div>
-            """
-            st.markdown('<div style="margin-top: -10px;">', unsafe_allow_html=True)
-            components.html(html_energy, height=470)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        with col2:
-            # Información descriptiva del asistente - usando el método nativo de Streamlit para evitar HTML visible
-            st.markdown("""
-            <div style="background-color: #f8f8f8; border-radius: 10px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 0; border-left: 3px solid #EB6600;">
-                <h4 style="color: #031B4E; margin-top: 0; margin-bottom: 20px; font-size: 18px;">Características</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para las listas con más espacio
-            st.markdown("<div style='margin-bottom: 12px;'>• Monitoreo de consumo energético en tiempo real</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Análisis de patrones de uso de energía</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Recomendaciones personalizadas para ahorro</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Alertas de consumo inusual</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Calculadora de eficiencia energética</div>", unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background-color: #f8f8f8; padding-left: 15px; padding-bottom: 5px; margin-top: 25px;">
-                <h4 style="color: #031B4E; margin-top: 15px; margin-bottom: 20px; font-size: 18px;">¿Qué puedes preguntar?</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para las preguntas con más espacio
-            st.markdown("<div style='margin-bottom: 12px;'>• ¿Cómo reducir mi factura eléctrica?</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• ¿Cuáles son mis horas de mayor consumo?</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Comparación de consumo mensual</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Tips para mejorar la eficiencia energética</div>", unsafe_allow_html=True)
-    
-    # Asistente Textil
-    elif selected == "Asistente Textil":
-        # Encabezado del asistente
-        st.markdown("""
-        <div class="assistant-card">
-            <div style="display: flex; align-items: center;">
-                <i class="material-icons icon-large">layers</i>
-                <h2 style="margin-left: 10px; margin-bottom: 0;">Asistente Textil</h2>
-            </div>
-            <p>Resuelve tus dudas sobre nuestros productos textiles y recomendaciones personalizadas.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Añadir columnas para estructurar mejor el contenido
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Widget de chatbot textil (altura reducida)
-            html_textile = """
-            <div style="background-color: #f8f8f8; border-radius: 10px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 0;">
-                <div style="height: 450px;">
-                    <script async
-                      src="https://uq726hao4xro7jumqyhtswwr.agents.do-ai.run/static/chatbot/widget.js"
-                      data-agent-id="7b5424b4-04e6-11f0-bf8f-4e013e2ddde4"
-                      data-chatbot-id="w2nmpPtU6h_qGYKXdZ1-hSmvAlRhkzKQ"
-                      data-name="Asistente Textil SUME"
-                      data-primary-color="#031B4E"
-                      data-secondary-color="#E5E8ED"
-                      data-button-background-color="#0061EB"
-                      data-starting-message="¡Hola! ¿En qué puedo asistirte con nuestros productos textiles?"
-                      data-logo="/static/chatbot/icons/default-agent.svg">
-                    </script>
-                </div>
-            </div>
-            """
-            st.markdown('<div style="margin-top: -10px;">', unsafe_allow_html=True)
-            components.html(html_textile, height=470)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        with col2:
-            # Información descriptiva del asistente textil - usando método nativo de Streamlit
-            st.markdown("""
-            <div style="background-color: #f8f8f8; border-radius: 10px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 0; border-left: 3px solid #031B4E;">
-                <h4 style="color: #031B4E; margin-top: 0; margin-bottom: 20px; font-size: 18px;">Características</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para las listas con más espacio
-            st.markdown("<div style='margin-bottom: 12px;'>• Catálogo completo de productos textiles</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Especificaciones técnicas detalladas</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Recomendaciones según necesidades</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Información sobre disponibilidad</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Guía de mantenimiento y cuidados</div>", unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background-color: #f8f8f8; padding-left: 15px; padding-bottom: 5px; margin-top: 25px;">
-                <h4 style="color: #031B4E; margin-top: 15px; margin-bottom: 20px; font-size: 18px;">¿Qué puedes preguntar?</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Usar componentes nativos de Streamlit para las preguntas con más espacio
-            st.markdown("<div style='margin-bottom: 12px;'>• ¿Qué materiales usan en sus productos?</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• ¿Tienen opciones sostenibles?</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Recomendaciones según mi industria</div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom: 12px;'>• Información de envíos y disponibilidad</div>", unsafe_allow_html=True)
-    
-    # Acerca de
-    elif selected == "Acerca de":
-        st.markdown("""
-        <div class="assistant-card">
-            <h2>Acerca de SUME Energy</h2>
-            <p>SUME Energy es una empresa comprometida con la innovación y la eficiencia energética.
-            Nuestros asistentes digitales están diseñados para facilitar el acceso a nuestros servicios
-            y proporcionar una experiencia de usuario excepcional.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Usar componentes nativos de Streamlit para el divisor y la lista
-        st.markdown('<hr style="height: 3px; background: linear-gradient(90deg, #EB6600, #031B4E); margin: 10px 0; border: none;">', unsafe_allow_html=True)
-        
-        st.markdown("<h3>Contacto</h3>", unsafe_allow_html=True)
-        st.markdown("Para más información, contáctenos a través de:")
-        
-        # Usar texto nativo de Streamlit para la lista
-        st.markdown("• Email: info@sume-energy.com")
-        st.markdown("• Teléfono: +123 456 7890")
-        st.markdown("• Dirección: Calle Principal 123, Ciudad")
-        
-        st.image("logo_sume2.png", width=200)
+    except Exception as e:
+        return {"error": f"Error al comunicarse con el agente: {str(e)}"}
 
-    # Aplicar material design
-    st.markdown("""
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    """, unsafe_allow_html=True)
-    
-    # Footer compacto
-    st.markdown("""
-    <div style="background-color: #f8f9fa; padding: 5px; text-align: center; border-top: 1px solid #ddd; margin-top: 10px;">
-        <p style="margin: 0; font-size: 12px;">© 2025 SUME Energy - Todos los derechos reservados</p>
-    </div>
-    """, unsafe_allow_html=True)
+# Sección para probar conexión con el agente
+with st.sidebar.expander("Probar conexión"):
+    if st.button("Verificar endpoint"):
+        with st.spinner("Verificando conexión..."):
+            try:
+                agent_endpoint = st.session_state.agent_endpoint
+                agent_access_key = st.session_state.agent_access_key
+                
+                if not agent_endpoint or not agent_access_key:
+                    st.error("Falta configuración del endpoint o clave de acceso")
+                else:
+                    # Asegurarse de que el endpoint termine correctamente
+                    if not agent_endpoint.endswith("/"):
+                        agent_endpoint += "/"
+                    
+                    # Verificar si la documentación está disponible (común en estos endpoints)
+                    docs_url = f"{agent_endpoint}docs"
+                    
+                    # Preparar headers
+                    headers = {
+                        "Authorization": f"Bearer {agent_access_key}",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    try:
+                        # Primero intentar verificar si hay documentación disponible
+                        response = requests.get(docs_url, timeout=10)
+                        
+                        if response.status_code < 400:
+                            st.success(f"✅ Documentación del agente accesible en: {docs_url}")
+                        
+                        # Luego intentar hacer una solicitud simple para verificar la conexión
+                        completions_url = f"{agent_endpoint}api/v1/chat/completions"
+                        test_payload = {
+                            "model": "n/a",
+                            "messages": [{"role": "user", "content": "Hello"}],
+                            "max_tokens": 5,
+                            "stream": False
+                        }
+                        
+                        response = requests.post(completions_url, headers=headers, json=test_payload, timeout=10)
+                        
+                        if response.status_code < 400:
+                            st.success(f"✅ Conexión exitosa con el endpoint del agente")
+                            with st.expander("Ver detalles de la respuesta"):
+                                try:
+                                    st.json(response.json())
+                                except:
+                                    st.code(response.text)
+                            st.info("🔍 La API está configurada correctamente y responde a las solicitudes.")
+                        else:
+                            st.error(f"❌ Error al conectar con el agente. Código: {response.status_code}")
+                            with st.expander("Ver detalles del error"):
+                                st.code(response.text)
+                    except Exception as e:
+                        st.error(f"Error de conexión: {str(e)}")
+            except Exception as e:
+                st.error(f"Error al verificar endpoint: {str(e)}")
 
-if __name__ == "__main__":
-    main()
+# Mostrar historial de conversación
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# Campo de entrada para el mensaje
+prompt = st.chat_input("Escribe tu mensaje aquí...")
+
+# Procesar la entrada del usuario
+if prompt:
+    # Añadir mensaje del usuario al historial
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Mostrar mensaje del usuario
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    
+    # Preparar historial para la API
+    api_history = st.session_state.messages[:-1]  # Excluir el mensaje actual
+    
+    # Mostrar indicador de carga mientras se procesa
+    with st.chat_message("assistant"):
+        with st.spinner("Pensando..."):
+            # Enviar consulta al agente
+            response = query_agent(prompt, api_history)
+            
+            if "error" in response:
+                st.error(f"Error: {response['error']}")
+                if "details" in response:
+                    with st.expander("Detalles del error"):
+                        st.code(response["details"])
+                
+                # Añadir mensaje de error al historial
+                error_msg = f"Lo siento, ocurrió un error al procesar tu solicitud: {response['error']}"
+                st.session_state.messages.append({"role": "assistant", "content": error_msg})
+            else:
+                # Mostrar respuesta del asistente
+                response_text = response.get("response", "No se recibió respuesta del agente.")
+                st.markdown(response_text)
+                
+                # Mostrar información adicional si está disponible
+                for info_type, display_name in [
+                    ("retrieval", "Información de recuperación"),
+                    ("functions", "Información de funciones"),
+                    ("guardrails", "Información de guardrails")
+                ]:
+                    if info_type in response:
+                        with st.expander(f"{display_name}"):
+                            st.json(response[info_type])
+                
+                # Añadir respuesta al historial
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+
+# Sección de opciones adicionales
+st.divider()
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("🗑️ Limpiar conversación"):
+        st.session_state.messages = []
+        st.experimental_rerun()
+
+with col2:
+    if st.button("💾 Guardar conversación"):
+        # Convertir historial a formato JSON
+        conversation_data = json.dumps(st.session_state.messages, indent=2)
+        
+        # Crear archivo para descargar
+        st.download_button(
+            label="Descargar JSON",
+            data=conversation_data,
+            file_name="conversacion.json",
+            mime="application/json",
+        )
+
+# Pie de página
+st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
