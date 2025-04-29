@@ -2,11 +2,14 @@ import streamlit as st
 import requests
 import json
 import time
+import base64
+from gtts import gTTS
+import io
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Agente DigitalOcean",
-    page_icon="🤖",
+    page_title="Agente DigitalOcean con Voz",
+    page_icon="🎙️",
     layout="wide"
 )
 
@@ -39,6 +42,24 @@ st.markdown("""
         padding: 10px;
         font-size: 0.8rem;
     }
+    .audio-controls {
+        display: flex;
+        align-items: center;
+        margin-top: 10px;
+    }
+    .audio-button {
+        background-color: #1E88E5;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        margin-right: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,12 +79,43 @@ def initialize_session_vars():
         st.session_state.include_functions = False
     if "include_guardrails" not in st.session_state:
         st.session_state.include_guardrails = False
+    if "enable_tts" not in st.session_state:
+        st.session_state.enable_tts = True
+    if "tts_language" not in st.session_state:
+        st.session_state.tts_language = "es"
+    if "tts_speed" not in st.session_state:
+        st.session_state.tts_speed = False
 
 # Inicializar variables
 initialize_session_vars()
 
+# Función para generar audio a partir de texto
+def text_to_speech(text, lang='es', slow=False):
+    try:
+        # Crear objeto gTTS
+        tts = gTTS(text=text, lang=lang, slow=slow)
+        
+        # Guardar audio en un buffer en memoria
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        
+        # Convertir a base64 para reproducir en HTML
+        audio_base64 = base64.b64encode(audio_buffer.read()).decode()
+        audio_html = f'''
+        <div class="audio-controls">
+            <audio autoplay="false" controls>
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                Tu navegador no soporta el elemento de audio.
+            </audio>
+        </div>
+        '''
+        return audio_html
+    except Exception as e:
+        return f"<div class='error'>Error al generar audio: {str(e)}</div>"
+
 # Título y descripción de la aplicación
-st.markdown("<h1 class='main-header'>Agente de DigitalOcean</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Agente de DigitalOcean con Voz</h1>", unsafe_allow_html=True)
 
 # Pantalla de configuración inicial si aún no se ha configurado
 if not st.session_state.is_configured:
@@ -86,6 +138,38 @@ if not st.session_state.is_configured:
     )
     
     # Opciones adicionales
+    st.subheader("Opciones de Text-to-Speech")
+    
+    enable_tts = st.checkbox(
+        "Habilitar Text-to-Speech",
+        value=True,
+        help="Convertir respuestas de texto a voz"
+    )
+    
+    tts_language = st.selectbox(
+        "Idioma para Text-to-Speech",
+        options=["es", "en", "fr", "de", "it", "pt"],
+        format_func=lambda x: {
+            "es": "Español", 
+            "en": "Inglés",
+            "fr": "Francés",
+            "de": "Alemán",
+            "it": "Italiano",
+            "pt": "Portugués"
+        }[x],
+        index=0,
+        help="Selecciona el idioma para la síntesis de voz"
+    )
+    
+    tts_speed = st.checkbox(
+        "Habla lenta",
+        value=False,
+        help="Reducir la velocidad de la voz generada"
+    )
+    
+    # Otras opciones del agente
+    st.subheader("Opciones del Agente")
+    
     include_retrieval = st.checkbox(
         "Incluir información de recuperación",
         value=False,
@@ -117,6 +201,9 @@ if not st.session_state.is_configured:
                 st.session_state.include_retrieval = include_retrieval
                 st.session_state.include_functions = include_functions
                 st.session_state.include_guardrails = include_guardrails
+                st.session_state.enable_tts = enable_tts
+                st.session_state.tts_language = tts_language
+                st.session_state.tts_speed = tts_speed
                 st.session_state.is_configured = True
                 st.success("¡Configuración guardada correctamente!")
                 time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
@@ -135,6 +222,8 @@ st.sidebar.title("Configuración")
 st.sidebar.success("✅ Configuración cargada")
 with st.sidebar.expander("Ver configuración actual"):
     st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
+    st.write(f"Text-to-Speech: {'Habilitado' if st.session_state.enable_tts else 'Deshabilitado'}")
+    st.write(f"Idioma TTS: {st.session_state.tts_language}")
     st.write(f"Include retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
     st.write(f"Include functions: {'Sí' if st.session_state.include_functions else 'No'}")
     st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
@@ -150,7 +239,39 @@ with st.sidebar.expander("Ajustes avanzados"):
     max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
                           help="Número máximo de tokens en la respuesta.")
     
+    # Opciones de Text-to-Speech
+    st.subheader("Text-to-Speech")
+    
+    enable_tts = st.checkbox(
+        "Habilitar Text-to-Speech",
+        value=st.session_state.enable_tts,
+        help="Convertir respuestas de texto a voz"
+    )
+    
+    tts_language = st.selectbox(
+        "Idioma para Text-to-Speech",
+        options=["es", "en", "fr", "de", "it", "pt"],
+        format_func=lambda x: {
+            "es": "Español", 
+            "en": "Inglés",
+            "fr": "Francés",
+            "de": "Alemán",
+            "it": "Italiano",
+            "pt": "Portugués"
+        }[x],
+        index=["es", "en", "fr", "de", "it", "pt"].index(st.session_state.tts_language),
+        help="Selecciona el idioma para la síntesis de voz"
+    )
+    
+    tts_speed = st.checkbox(
+        "Habla lenta",
+        value=st.session_state.tts_speed,
+        help="Reducir la velocidad de la voz generada"
+    )
+    
     # Opciones para incluir información adicional
+    st.subheader("Opciones del Agente")
+    
     include_retrieval = st.checkbox(
         "Incluir información de recuperación",
         value=st.session_state.include_retrieval,
@@ -168,9 +289,15 @@ with st.sidebar.expander("Ajustes avanzados"):
     )
     
     # Actualizar la configuración si cambia
-    if (include_retrieval != st.session_state.include_retrieval or
+    if (enable_tts != st.session_state.enable_tts or
+        tts_language != st.session_state.tts_language or
+        tts_speed != st.session_state.tts_speed or
+        include_retrieval != st.session_state.include_retrieval or
         include_functions != st.session_state.include_functions or
         include_guardrails != st.session_state.include_guardrails):
+        st.session_state.enable_tts = enable_tts
+        st.session_state.tts_language = tts_language
+        st.session_state.tts_speed = tts_speed
         st.session_state.include_retrieval = include_retrieval
         st.session_state.include_functions = include_functions
         st.session_state.include_guardrails = include_guardrails
@@ -326,6 +453,9 @@ with st.sidebar.expander("Probar conexión"):
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        # Si es un mensaje del asistente y tiene audio asociado, mostrarlo
+        if message["role"] == "assistant" and "audio_html" in message:
+            st.markdown(message["audio_html"], unsafe_allow_html=True)
 
 # Campo de entrada para el mensaje
 prompt = st.chat_input("Escribe tu mensaje aquí...")
@@ -362,6 +492,17 @@ if prompt:
                 response_text = response.get("response", "No se recibió respuesta del agente.")
                 st.markdown(response_text)
                 
+                # Generar audio si está habilitado
+                audio_html = None
+                if st.session_state.enable_tts:
+                    with st.spinner("Generando audio..."):
+                        audio_html = text_to_speech(
+                            response_text, 
+                            lang=st.session_state.tts_language, 
+                            slow=st.session_state.tts_speed
+                        )
+                        st.markdown(audio_html, unsafe_allow_html=True)
+                
                 # Mostrar información adicional si está disponible
                 for info_type, display_name in [
                     ("retrieval", "Información de recuperación"),
@@ -372,13 +513,16 @@ if prompt:
                         with st.expander(f"{display_name}"):
                             st.json(response[info_type])
                 
-                # Añadir respuesta al historial
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                # Añadir respuesta al historial con el audio
+                message_data = {"role": "assistant", "content": response_text}
+                if audio_html:
+                    message_data["audio_html"] = audio_html
+                st.session_state.messages.append(message_data)
 
 # Sección de opciones adicionales
 st.divider()
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🗑️ Limpiar conversación"):
@@ -387,8 +531,14 @@ with col1:
 
 with col2:
     if st.button("💾 Guardar conversación"):
+        # Crear una versión del historial sin HTML para guardar
+        save_messages = []
+        for msg in st.session_state.messages:
+            save_msg = {"role": msg["role"], "content": msg["content"]}
+            save_messages.append(save_msg)
+            
         # Convertir historial a formato JSON
-        conversation_data = json.dumps(st.session_state.messages, indent=2)
+        conversation_data = json.dumps(save_messages, indent=2)
         
         # Crear archivo para descargar
         st.download_button(
@@ -398,5 +548,12 @@ with col2:
             mime="application/json",
         )
 
+with col3:
+    if st.button("🔄 Cambiar TTS " + ("✅" if st.session_state.enable_tts else "❌")):
+        st.session_state.enable_tts = not st.session_state.enable_tts
+        st.success(f"Text-to-Speech {'habilitado' if st.session_state.enable_tts else 'deshabilitado'}")
+        time.sleep(0.5)
+        st.experimental_rerun()
+
 # Pie de página
-st.markdown("<div class='footer'>Agente de DigitalOcean © 2025</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Agente de DigitalOcean con Text-to-Speech © 2025</div>", unsafe_allow_html=True)
