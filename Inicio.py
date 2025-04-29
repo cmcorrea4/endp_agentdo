@@ -5,6 +5,8 @@ import time
 import base64
 from gtts import gTTS
 import io
+from fpdf import FPDF
+import tempfile
 
 # Configuración de la página
 st.set_page_config(
@@ -79,17 +81,15 @@ def initialize_session_vars():
         st.session_state.include_functions = False
     if "include_guardrails" not in st.session_state:
         st.session_state.include_guardrails = False
-    if "tts_speed" not in st.session_state:
-        st.session_state.tts_speed = False
 
 # Inicializar variables
 initialize_session_vars()
 
 # Función para generar audio a partir de texto
-def text_to_speech(text, slow=False):
+def text_to_speech(text):
     try:
-        # Crear objeto gTTS (siempre en español)
-        tts = gTTS(text=text, lang='es', slow=slow)
+        # Crear objeto gTTS (siempre en español y rápido)
+        tts = gTTS(text=text, lang='es', slow=False)
         
         # Guardar audio en un buffer en memoria
         audio_buffer = io.BytesIO()
@@ -133,15 +133,6 @@ if not st.session_state.is_configured:
         help="Tu clave de acceso para autenticar las solicitudes"
     )
     
-    # Opciones adicionales
-    st.subheader("Opciones de Text-to-Speech")
-    
-    tts_speed = st.checkbox(
-        "Habla lenta",
-        value=False,
-        help="Reducir la velocidad de la voz generada"
-    )
-    
     # Otras opciones del agente
     st.subheader("Opciones del Agente")
     
@@ -176,7 +167,6 @@ if not st.session_state.is_configured:
                 st.session_state.include_retrieval = include_retrieval
                 st.session_state.include_functions = include_functions
                 st.session_state.include_guardrails = include_guardrails
-                st.session_state.tts_speed = tts_speed
                 st.session_state.is_configured = True
                 st.success("¡Configuración guardada correctamente!")
                 time.sleep(1)  # Breve pausa para mostrar el mensaje de éxito
@@ -195,7 +185,6 @@ st.sidebar.title("Configuración")
 st.sidebar.success("✅ Configuración cargada")
 with st.sidebar.expander("Ver configuración actual"):
     st.code(f"Endpoint: {st.session_state.agent_endpoint}\nClave de acceso: {'*'*10}")
-    st.write(f"Habla lenta: {'Sí' if st.session_state.tts_speed else 'No'}")
     st.write(f"Include retrieval: {'Sí' if st.session_state.include_retrieval else 'No'}")
     st.write(f"Include functions: {'Sí' if st.session_state.include_functions else 'No'}")
     st.write(f"Include guardrails: {'Sí' if st.session_state.include_guardrails else 'No'}")
@@ -210,15 +199,6 @@ with st.sidebar.expander("Ajustes avanzados"):
     
     max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
                           help="Número máximo de tokens en la respuesta.")
-    
-    # Opciones de Text-to-Speech
-    st.subheader("Text-to-Speech")
-    
-    tts_speed = st.checkbox(
-        "Habla lenta",
-        value=st.session_state.tts_speed,
-        help="Reducir la velocidad de la voz generada"
-    )
     
     # Opciones para incluir información adicional
     st.subheader("Opciones del Agente")
@@ -240,11 +220,9 @@ with st.sidebar.expander("Ajustes avanzados"):
     )
     
     # Actualizar la configuración si cambia
-    if (tts_speed != st.session_state.tts_speed or
-        include_retrieval != st.session_state.include_retrieval or
+    if (include_retrieval != st.session_state.include_retrieval or
         include_functions != st.session_state.include_functions or
         include_guardrails != st.session_state.include_guardrails):
-        st.session_state.tts_speed = tts_speed
         st.session_state.include_retrieval = include_retrieval
         st.session_state.include_functions = include_functions
         st.session_state.include_guardrails = include_guardrails
@@ -442,10 +420,7 @@ if prompt:
                 # Generar audio (siempre)
                 audio_html = None
                 with st.spinner("Generando audio..."):
-                    audio_html = text_to_speech(
-                        response_text, 
-                        slow=st.session_state.tts_speed
-                    )
+                    audio_html = text_to_speech(response_text)
                     st.markdown(audio_html, unsafe_allow_html=True)
                 
                 # Mostrar información adicional si está disponible
@@ -472,25 +447,58 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("🗑️ Limpiar conversación"):
         st.session_state.messages = []
-        st.experimental_rerun()
+        st.rerun()
 
 with col2:
-    if st.button("💾 Guardar conversación"):
-        # Crear una versión del historial sin HTML para guardar
-        save_messages = []
-        for msg in st.session_state.messages:
-            save_msg = {"role": msg["role"], "content": msg["content"]}
-            save_messages.append(save_msg)
-            
-        # Convertir historial a formato JSON
-        conversation_data = json.dumps(save_messages, indent=2)
+    if st.button("💾 Guardar conversación en PDF"):
+        # Crear PDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
         
-        # Crear archivo para descargar
+        # Añadir título
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, "Conversación con Agente DigitalOcean", ln=True, align='C')
+        pdf.ln(10)
+        
+        # Añadir fecha
+        from datetime import datetime
+        pdf.set_font("Arial", 'I', 10)
+        pdf.cell(200, 10, f"Generado el: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", ln=True)
+        pdf.ln(10)
+        
+        # Recuperar mensajes
+        pdf.set_font("Arial", size=12)
+        for msg in st.session_state.messages:
+            if msg["role"] == "user":
+                pdf.set_text_color(0, 0, 255)  # Azul para usuario
+                pdf.cell(200, 10, "Usuario:", ln=True)
+            else:
+                pdf.set_text_color(0, 128, 0)  # Verde para asistente
+                pdf.cell(200, 10, "Asistente:", ln=True)
+            
+            pdf.set_text_color(0, 0, 0)  # Negro para el contenido
+            
+            # Partir el texto en múltiples líneas si es necesario
+            text = msg["content"]
+            pdf.multi_cell(190, 10, text)
+            pdf.ln(5)
+        
+        # Guardar el PDF en un archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            pdf_path = tmp_file.name
+            pdf.output(pdf_path)
+        
+        # Abrir y leer el archivo para la descarga
+        with open(pdf_path, "rb") as f:
+            pdf_data = f.read()
+        
+        # Botón de descarga
         st.download_button(
-            label="Descargar JSON",
-            data=conversation_data,
-            file_name="conversacion.json",
-            mime="application/json",
+            label="Descargar PDF",
+            data=pdf_data,
+            file_name="conversacion.pdf",
+            mime="application/pdf",
         )
 
 # Pie de página
