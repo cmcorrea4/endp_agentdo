@@ -117,7 +117,7 @@ st.markdown("<h1 class='main-header'>Asistente Digital</h1>", unsafe_allow_html=
 if not st.session_state.is_configured:
     st.markdown("<h2 class='subheader'>Configuración Inicial</h2>", unsafe_allow_html=True)
     
-    st.info("Por favor, configura los parámetros para conectar con tu agente de DigitalOcean.")
+    st.info("Por favor, configura los parámetros para conectar con tu asistente de Digital.")
     
     # Campos para la configuración
     agent_endpoint = st.text_input(
@@ -201,7 +201,7 @@ with st.sidebar.expander("Ajustes avanzados"):
                           help="Número máximo de tokens en la respuesta.")
     
     # Opciones para incluir información adicional
-    st.subheader("Opciones del Agente")
+    st.subheader("Opciones del Asistente")
     
     include_retrieval = st.checkbox(
         "Incluir información de recuperación",
