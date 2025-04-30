@@ -10,7 +10,7 @@ import tempfile
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Agente DigitalOcean con Voz",
+    page_title="Asistente Digital",
     page_icon="🎙️",
     layout="wide"
 )
@@ -111,7 +111,7 @@ def text_to_speech(text):
         return f"<div class='error'>Error al generar audio: {str(e)}</div>"
 
 # Título y descripción de la aplicación
-st.markdown("<h1 class='main-header'>Agente de DigitalOcean con Voz</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Asistente Digital</h1>", unsafe_allow_html=True)
 
 # Pantalla de configuración inicial si aún no se ha configurado
 if not st.session_state.is_configured:
@@ -134,7 +134,7 @@ if not st.session_state.is_configured:
     )
     
     # Otras opciones del agente
-    st.subheader("Opciones del Agente")
+    st.subheader("Opciones del Asistente")
     
     include_retrieval = st.checkbox(
         "Incluir información de recuperación",
@@ -176,7 +176,7 @@ if not st.session_state.is_configured:
     st.stop()
 
 # Una vez configurado, mostrar la interfaz normal
-st.markdown("<p class='subheader'>Interactúa con tu agente de DigitalOcean.</p>", unsafe_allow_html=True)
+st.markdown("<p class='subheader'>Interactúa con tu asistente.</p>", unsafe_allow_html=True)
 
 # Sidebar para configuración
 st.sidebar.title("Configuración")
@@ -194,7 +194,7 @@ with st.sidebar.expander("Ver configuración actual"):
 
 # Ajustes avanzados
 with st.sidebar.expander("Ajustes avanzados"):
-    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.7, step=0.1,
+    temperature = st.slider("Temperatura", min_value=0.0, max_value=1.0, value=0.2, step=0.1,
                           help="Valores más altos generan respuestas más creativas, valores más bajos generan respuestas más deterministas.")
     
     max_tokens = st.slider("Longitud máxima", min_value=100, max_value=2000, value=1000, step=100,
@@ -313,7 +313,7 @@ def query_agent(prompt, history=None):
             return {"error": f"Error en la solicitud HTTP: {str(e)}"}
         
     except Exception as e:
-        return {"error": f"Error al comunicarse con el agente: {str(e)}"}
+        return {"error": f"Error al comunicarse con el asistente: {str(e)}"}
 
 # Sección para probar conexión con el agente
 with st.sidebar.expander("Probar conexión"):
@@ -383,7 +383,7 @@ for message in st.session_state.messages:
             st.markdown(message["audio_html"], unsafe_allow_html=True)
 
 # Campo de entrada para el mensaje
-prompt = st.chat_input("Escribe tu mensaje aquí...")
+prompt = st.chat_input("Escribe tu pregunta aquí...")
 
 # Procesar la entrada del usuario
 if prompt:
@@ -458,7 +458,7 @@ with col2:
         
         # Añadir título
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, "Conversación con Agente DigitalOcean", ln=True, align='C')
+        pdf.cell(200, 10, "Conversación con el Asistente", ln=True, align='C')
         pdf.ln(10)
         
         # Añadir fecha
@@ -502,4 +502,4 @@ with col2:
         )
 
 # Pie de página
-st.markdown("<div class='footer'>Agente de DigitalOcean con Text-to-Speech © 2025</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Asistente con Text-to-Speech © 2025</div>", unsafe_allow_html=True)
